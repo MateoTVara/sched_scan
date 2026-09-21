@@ -6,6 +6,11 @@
   jdk21,
   just,
   yj,
+  writeShellApplication,
+  git,
+  tree,
+  gnused,
+  coreutils,
 }:
 let
   mainPkg = callPackage ./package.nix { };
@@ -40,13 +45,39 @@ in
 mkShell {
   inputsFrom = [ mainPkg ];
 
-  packages = [
+  packages =
+  let
+    scripts = {
+      mycommit = writeShellApplication {
+        name = "mycommit";
+        runtimeInputs = [ git tree gnused coreutils ];
+        text = /* bash */ ''
+          TMP_DIR="temp"
+          mkdir -p "$TMP_DIR"
+      
+          echo "Saving staged changes to $TMP_DIR/staged.diff..."
+          git diff --staged > "$TMP_DIR/staged.diff"
+      
+          echo "Gathering commit history to $TMP_DIR/commits.log..."
+          git log > "$TMP_DIR/commits.log"
+      
+          echo "Generating directory structure to $TMP_DIR/tree.log..."
+          basename "$PWD" > "$TMP_DIR/tree.log"
+          tree -a --dirsfirst -I '.git|temp' \
+            | sed '1d' >> "$TMP_DIR/tree.log"
+      
+          echo "All information has been saved to $PWD/$TMP_DIR."
+        '';
+      };
+    };
+  in
+  [
     google-chrome
     jdk21
     androidSdk
     just
     yj
-  ];
+  ] ++ builtins.attrValues scripts;
 
   ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
   ANDROID_SDK_ROOT = "${androidSdk}/libexec/android-sdk";
