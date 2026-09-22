@@ -3,12 +3,12 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:sched_scan/schedule/models/schedule_image.dart';
 
 class ScannerViewModel extends ChangeNotifier {
-  final _textRecognizer = TextRecognizer(
-    script: TextRecognitionScript.latin,
-  );
+  final _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
-  String? _recognizedText;
-  String? get recognizedText => _recognizedText;
+  RecognizedText? _recognizedText;
+  RecognizedText? get recognizedText => _recognizedText;
+  bool _isScanning = false;
+  bool get isScanning => _isScanning;
 
   @override
   void dispose() {
@@ -20,9 +20,15 @@ class ScannerViewModel extends ChangeNotifier {
     final file = image.file;
     if (file == null) return;
 
-    final inputImage = InputImage.fromFilePath(file.path);
-    final result = await _textRecognizer.processImage(inputImage);
-    _recognizedText = result.text;
+    _isScanning = true;
     notifyListeners();
+
+    try {
+      final inputImage = InputImage.fromFilePath(file.path);
+      _recognizedText = await _textRecognizer.processImage(inputImage);
+    } finally {
+      _isScanning = false;
+      notifyListeners();
+    }
   }
 }

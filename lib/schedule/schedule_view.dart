@@ -16,9 +16,9 @@ class ScheduleView extends StatelessWidget {
         final image = viewModel.scheduleImage.file;
 
         return image == null
-          ? Text('No image selected yet')
-          : Image.file(File(image.path));
-      }
+            ? const Text('No image selected yet')
+            : Image.file(File(image.path));
+      },
     );
   }
 }

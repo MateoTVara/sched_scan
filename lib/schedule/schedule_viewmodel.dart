@@ -10,10 +10,8 @@ class ScheduleViewModel extends ChangeNotifier {
   ScheduleViewModel({required this.scheduleImage});
 
   Future<void> pickImage() async {
-    final result = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
-    );
-    
+    final result = await _imagePicker.pickImage(source: ImageSource.gallery);
+
     if (result == null) return;
 
     scheduleImage.file = result;

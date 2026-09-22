@@ -17,9 +17,7 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
-  final _scheduleViewModel = ScheduleViewModel(
-    scheduleImage: ScheduleImage(),
-  );
+  final _scheduleViewModel = ScheduleViewModel(scheduleImage: ScheduleImage());
   final _scannerViewModel = ScannerViewModel();
 
   Future<void> _process() async {
@@ -41,9 +39,7 @@ class _MainAppState extends State<MainApp> {
         appBar: AppBar(
           title: const Text(
             'Schedule Scanner',
-            style: TextStyle(
-              color: Colors.white,
-            ),
+            style: TextStyle(color: Colors.white),
           ),
           backgroundColor: Colors.deepPurple,
         ),
@@ -52,17 +48,16 @@ class _MainAppState extends State<MainApp> {
             child: Column(
               children: [
                 ScheduleView(viewModel: _scheduleViewModel),
-                ScannerView(viewModel: _scannerViewModel),               
+                ScannerView(viewModel: _scannerViewModel),
               ],
             ),
           ),
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: _process,
-          child: Icon(Icons.image),
+          child: const Icon(Icons.image),
         ),
       ),
     );
   }
 }
-

@@ -1,10 +1,12 @@
 {
   treefmt,
   nixfmt,
+  flutter,
 }:
 treefmt.withConfig {
   runtimeInputs = [
     nixfmt
+    flutter # flutter to not redownload another dart binary
   ];
 
   settings = {
