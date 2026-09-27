@@ -7,10 +7,13 @@ environment:
   sdk: ^3.13.3
 
 dependencies:
+  cross_file: ^0.3.5+5
+  file_picker: ^13.1.0
   flutter:
     sdk: flutter
   google_mlkit_text_recognition: ^0.17.1
   image_picker: ^1.2.3
+  syncfusion_flutter_pdf: ^34.2.9
 
 dev_dependencies:
   flutter_test:

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:sched_scan/schedule/models/schedule_source.dart';
 import 'package:sched_scan/schedule/schedule_viewmodel.dart';
 
 class ScheduleView extends StatelessWidget {
@@ -13,11 +14,11 @@ class ScheduleView extends StatelessWidget {
     return ListenableBuilder(
       listenable: viewModel,
       builder: (context, _) {
-        final image = viewModel.scheduleImage.file;
-
-        return image == null
-            ? const Text('No image selected yet')
-            : Image.file(File(image.path));
+        return switch (viewModel.source) {
+          null => const Text('No file selected yet.'),
+          ScheduleImage(:final file) => Image.file(File(file.path)),
+          SchedulePdf() => const Icon(Icons.picture_as_pdf, size: 64),
+        };
       },
     );
   }

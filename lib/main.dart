@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:sched_scan/scanner/scanner_view.dart';
 import 'package:sched_scan/scanner/scanner_viewmodel.dart';
-import 'package:sched_scan/schedule/models/schedule_image.dart';
 import 'package:sched_scan/schedule/schedule_view.dart';
 import 'package:sched_scan/schedule/schedule_viewmodel.dart';
+
+enum InputMode { image, pdf }
 
 void main() {
   runApp(const MainApp());
@@ -17,12 +18,25 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
-  final _scheduleViewModel = ScheduleViewModel(scheduleImage: ScheduleImage());
+  final _scheduleViewModel = ScheduleViewModel();
   final _scannerViewModel = ScannerViewModel();
 
+  InputMode _mode = InputMode.image;
+
+  void _toggleMode() {
+    setState(() {
+      _mode = _mode == InputMode.image ? InputMode.pdf : InputMode.image;
+    });
+  }
+
   Future<void> _process() async {
-    await _scheduleViewModel.pickImage();
-    await _scannerViewModel.scanImage(_scheduleViewModel.scheduleImage);
+    switch (_mode) {
+      case InputMode.image:
+        await _scheduleViewModel.pickImage();
+      case InputMode.pdf:
+        await _scheduleViewModel.pickPdf();
+    }
+    await _scannerViewModel.scan(_scheduleViewModel.source);
   }
 
   @override
@@ -42,6 +56,13 @@ class _MainAppState extends State<MainApp> {
             style: TextStyle(color: Colors.white),
           ),
           backgroundColor: Colors.deepPurple,
+          actions: [
+            IconButton(
+              onPressed: _toggleMode,
+              icon: const Icon(Icons.sync_alt, color: Colors.white),
+              tooltip: 'Switch between image and pdf',
+            ),
+          ],
         ),
         body: Center(
           child: SingleChildScrollView(
@@ -55,9 +76,12 @@ class _MainAppState extends State<MainApp> {
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: _process,
-          child: const Icon(Icons.image),
+          child: Icon(
+            _mode == InputMode.image ? Icons.image : Icons.picture_as_pdf,
+          ),
         ),
       ),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
