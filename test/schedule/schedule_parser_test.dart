@@ -25,7 +25,7 @@ const _col1 = 200.0;
 const _col2 = 400.0;
 
 const _samplePath =
-    '/home/marun/Downloads/DISTRIBUCIÓN DE AMBIENTES - 24_09_2026.pdf';
+    'test/fixtures/sample.pdf';
 
 ScheduleLine _header(int page) => ScheduleLine(
   pageIndex: page,

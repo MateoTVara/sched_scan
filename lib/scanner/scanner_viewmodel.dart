@@ -15,14 +15,16 @@ class ScannerViewModel extends ChangeNotifier {
   String? _recognizedText;
   String? get recognizedText => _recognizedText;
 
-  /// Parsed PDF entries in table order; empty for image scans and for PDFs
-  /// whose text could not be split into rows (the raw text then stands in).
+  /// Every parsed PDF entry in table order, free slots included; empty for
+  /// image scans and for PDFs whose text could not be split into rows (the
+  /// raw text then stands in). This, not [entriesByRoom], is the signal that
+  /// the parse worked: a document whose slots are all free still counts.
   List<ScheduleEntry> _entries = const [];
   List<ScheduleEntry> get entries => _entries;
 
-  /// The same entries grouped by room, sections in table order and entries
-  /// inside a section sorted by start time. Empty when there is nothing to
-  /// group, which is the signal to fall back to [recognizedText].
+  /// The booked slots grouped by room — [ScheduleEntry.isFree] slots are
+  /// dropped, and so is any room left with nothing but free ones. Sections
+  /// keep table order, entries inside a section are sorted by start time.
   Map<String, List<ScheduleEntry>> _entriesByRoom = const {};
   Map<String, List<ScheduleEntry>> get entriesByRoom => _entriesByRoom;
 
@@ -100,11 +102,15 @@ class ScannerViewModel extends ChangeNotifier {
     ];
   }
 
+  /// Groups the slots worth showing: free rooms are dropped outright, and a
+  /// room whose slots are all free disappears from the map. Table order is
+  /// kept because a plain `Map` preserves insertion order.
   static Map<String, List<ScheduleEntry>> _groupByRoom(
     List<ScheduleEntry> entries,
   ) {
     final grouped = <String, List<ScheduleEntry>>{};
     for (final entry in entries) {
+      if (entry.isFree) continue;
       grouped.putIfAbsent(entry.room, () => []).add(entry);
     }
     for (final section in grouped.values) {

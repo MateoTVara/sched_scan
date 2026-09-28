@@ -4,6 +4,10 @@ import 'package:sched_scan/schedule/models/schedule_entry.dart';
 
 /// Parsed schedule entries grouped by room: a section header per room with
 /// that room's slots as cards underneath, already ordered by start time.
+///
+/// Free (`LIBRE`) slots never reach this view — they are dropped when the
+/// entries are grouped — so an empty map means nothing is booked anywhere,
+/// which gets a message rather than a blank page.
 class EntriesView extends StatelessWidget {
   const EntriesView({super.key, required this.entriesByRoom});
 
@@ -12,6 +16,12 @@ class EntriesView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sections = entriesByRoom.entries.toList(growable: false);
+    if (sections.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('No slots booked — every room is free.'),
+      );
+    }
 
     return ListView.builder(
       shrinkWrap: true,

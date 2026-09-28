@@ -6,11 +6,11 @@ import 'package:sched_scan/scanner/scanner_viewmodel.dart';
 import 'package:sched_scan/schedule/models/schedule_source.dart';
 
 const _samplePath =
-    '/home/marun/Downloads/DISTRIBUCIÓN DE AMBIENTES - 24_09_2026.pdf';
+    'test/fixtures/sample.pdf';
 
 final _missing = File(_samplePath).existsSync()
     ? false
-    : 'sample pdf not found';
+    : 'sample pdf not found — place it at $_samplePath';
 
 /// The sample schedule as a picked file.
 XFile _sample() =>
@@ -31,7 +31,7 @@ void main() {
     expect(viewModel.recognizedText, contains('DISTRIBUCIÓN'));
   }, skip: _missing);
 
-  test('groups parsed pdf entries by room', () async {
+  test('groups the booked pdf entries by room', () async {
     final viewModel = _viewModel();
 
     await viewModel.scan(SchedulePdf(_sample()));
@@ -41,13 +41,27 @@ void main() {
     // The raw text stays available as the fallback for anything unparsed.
     expect(viewModel.recognizedText, contains('DISTRIBUCIÓN'));
 
-    // Sections keep the order the table prints them in.
-    expect(byRoom.keys.first, 'AULA DE ENSAYO 01');
-
-    // Nothing is lost or duplicated by the grouping.
-    final grouped = [for (final entries in byRoom.values) ...entries];
-    expect(grouped, hasLength(viewModel.entries.length));
+    // Free slots are still parsed — they are only dropped from the display.
+    expect(viewModel.entries.where((entry) => entry.isFree), isNotEmpty);
     expect(viewModel.entries.every((entry) => entry.start != null), isTrue);
+
+    // Every booked slot shows up exactly once, and nothing else does.
+    final booked = [
+      for (final entry in viewModel.entries)
+        if (!entry.isFree) entry,
+    ];
+    final grouped = [for (final entries in byRoom.values) ...entries];
+    expect(grouped, hasLength(booked.length));
+    expect(grouped.where((entry) => entry.isFree), isEmpty);
+
+    // Sections keep the order the first booked slot of each room appears in
+    // the table; a room with nothing but free slots gets no section at all.
+    expect(byRoom.keys.first, booked.first.room);
+    final freeOnlyRooms = {
+      for (final entry in viewModel.entries)
+        if (entry.isFree) entry.room,
+    }..removeWhere((room) => booked.any((entry) => entry.room == room));
+    expect(byRoom.keys.toSet().intersection(freeOnlyRooms), isEmpty);
 
     // Slots inside a room are ordered by start time, missing times last.
     for (final room in byRoom.keys) {

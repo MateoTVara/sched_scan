@@ -14,14 +14,15 @@ class ScannerView extends StatelessWidget {
       builder: (context, _) {
         return switch ((
           viewModel.isScanning,
+          viewModel.entries.isNotEmpty,
           viewModel.entriesByRoom,
           viewModel.recognizedText,
         )) {
-          (true, _, _) => const CircularProgressIndicator(),
-          (_, final entries, _) when entries.isNotEmpty => EntriesView(
-            entriesByRoom: entries,
-          ),
-          (_, _, final String text) => Text(text),
+          (true, _, _, _) => const CircularProgressIndicator(),
+          // Something parsed, so show the cards — even when every slot in
+          // the document turned out to be free.
+          (_, true, final bookings, _) => EntriesView(entriesByRoom: bookings),
+          (_, false, _, final String text) => Text(text),
           _ => const Text('No text recognized'),
         };
       },
