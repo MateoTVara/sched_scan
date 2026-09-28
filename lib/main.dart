@@ -21,7 +21,7 @@ class _MainAppState extends State<MainApp> {
   final _scheduleViewModel = ScheduleViewModel();
   final _scannerViewModel = ScannerViewModel();
 
-  InputMode _mode = InputMode.image;
+  InputMode _mode = InputMode.pdf;
 
   void _toggleMode() {
     setState(() {
