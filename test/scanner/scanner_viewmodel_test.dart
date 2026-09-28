@@ -5,8 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sched_scan/scanner/scanner_viewmodel.dart';
 import 'package:sched_scan/schedule/models/schedule_source.dart';
 
-const _samplePath =
-    'test/fixtures/sample.pdf';
+const _samplePath = 'test/fixtures/sample.pdf';
 
 final _missing = File(_samplePath).existsSync()
     ? false
