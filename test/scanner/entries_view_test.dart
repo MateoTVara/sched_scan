@@ -33,7 +33,7 @@ const _bookedInLosa = ScheduleEntry(
 );
 
 void main() {
-  testWidgets('renders a section header per room with its cards', (
+  testWidgets('renders a blockless room as its own heading with its cards', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -57,7 +57,7 @@ void main() {
     expect(find.text('ANA GARCÍA LÓPEZ'), findsOneWidget);
     expect(find.text('08:00 – 10:00'), findsOneWidget);
     expect(find.byType(EntryCard), findsNWidgets(2));
-    // Room mode has no block headings.
+    // Blockless rooms sit alone — no block heading above them.
     expect(find.textContaining('Bloque '), findsNothing);
     expect(find.textContaining('Sin reservas'), findsNothing);
   });

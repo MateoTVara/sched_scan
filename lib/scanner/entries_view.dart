@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:sched_scan/scanner/entry_card.dart';
 import 'package:sched_scan/schedule/models/entry_section.dart';
 
-/// The parsed schedule as cards under their headings: one heading per room in
-/// the "by room" layout, or a block heading over a heading per room in the
-/// "by block" layout. Cards are already ordered by start time.
+/// The parsed schedule as cards under their headings: a block heading over a
+/// heading per room, or — for a room with no block letter, which trails the
+/// blocks — a single heading over its cards. Cards are already ordered by
+/// start time.
 ///
 /// Free (`LIBRE`) slots never reach this view — they are dropped when the
 /// entries are grouped — so an empty list means nothing is booked anywhere,

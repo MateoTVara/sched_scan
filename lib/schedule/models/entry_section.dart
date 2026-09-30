@@ -2,9 +2,8 @@ import 'package:sched_scan/schedule/models/schedule_entry.dart';
 
 /// A heading over a run of cards, one level deep or two.
 ///
-/// One level — [entries] sit directly under [title] — is a room in the
-/// "group by room" layout, and in "group by block" it is how a room without a
-/// block letter is kept exactly as it appears in the other layout.
+/// One level — [entries] sit directly under [title] — is a room without a
+/// block letter: it keeps its own single heading, trailing the blocks.
 ///
 /// Two levels — [rooms] holds one heading per room — is a block: [title] is
 /// `Bloque A` and the rooms beneath it are that block's aulas.

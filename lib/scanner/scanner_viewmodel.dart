@@ -23,16 +23,11 @@ class ScannerViewModel extends ChangeNotifier {
   List<ScheduleEntry> _entries = const [];
   List<ScheduleEntry> get entries => _entries;
 
-  /// The booked slots as one section per room, in the order the table prints
-  /// them, cards sorted by start time. [ScheduleEntry.isFree] slots are
-  /// dropped, and so is any room left with nothing but free ones.
-  List<EntrySection> _sectionsByRoom = const [];
-  List<EntrySection> get sectionsByRoom => _sectionsByRoom;
-
-  /// The same slots grouped by block — `Bloque A` … `Bloque K`, alphabetical
-  /// and only the blocks that actually occur — each holding a section per
-  /// room in table order. Rooms with no block letter keep their own section
-  /// after the blocks, exactly as they read in [sectionsByRoom].
+  /// The booked slots grouped by block — `Bloque A` … `Bloque K`, alphabetical
+  /// and only the blocks that actually occur — each holding a section per room
+  /// in table order, cards sorted by start time. [ScheduleEntry.isFree] slots
+  /// are dropped, and so is any room left with nothing but free ones. Rooms
+  /// with no block letter keep their own single section after the blocks.
   List<EntrySection> _sectionsByBlock = const [];
   List<EntrySection> get sectionsByBlock => _sectionsByBlock;
 
@@ -64,7 +59,6 @@ class ScannerViewModel extends ChangeNotifier {
 
   Future<String> _scanImage(XFile file) async {
     _entries = const [];
-    _sectionsByRoom = const [];
     _sectionsByBlock = const [];
 
     final input = InputImage.fromFilePath(file.path);
@@ -74,7 +68,6 @@ class ScannerViewModel extends ChangeNotifier {
 
   Future<String> _scanPdf(XFile file) async {
     _entries = const [];
-    _sectionsByRoom = const [];
     _sectionsByBlock = const [];
 
     final bytes = await file.readAsBytes();
@@ -88,7 +81,6 @@ class ScannerViewModel extends ChangeNotifier {
           for (final entry in entries)
             if (!entry.isFree) entry,
         ];
-        _sectionsByRoom = _byRoom(booked);
         _sectionsByBlock = _byBlock(booked);
       }
       return extractor.extractText();
@@ -117,22 +109,6 @@ class ScannerViewModel extends ChangeNotifier {
     ];
   }
 
-  /// One section per room, in the order the table prints them — the order in
-  /// which each room's first booked slot appears.
-  static List<EntrySection> _byRoom(List<ScheduleEntry> booked) {
-    final rooms = <String, List<ScheduleEntry>>{};
-    for (final entry in booked) {
-      rooms.putIfAbsent(entry.room, () => []).add(entry);
-    }
-    for (final slots in rooms.values) {
-      _sortByStart(slots);
-    }
-    return [
-      for (final room in rooms.entries)
-        EntrySection(room.key, entries: room.value),
-    ];
-  }
-
   /// The block a room belongs to: the `<letter>-<digit>` code printed in its
   /// name — `AULA A-203` → `A`, `J-110A (…)` → `J`, `MÚLTIPLE C-202` → `C`.
   /// The code has to start a word, so a hyphen inside one (`TALLER-2`) is not
@@ -142,8 +118,8 @@ class ScannerViewModel extends ChangeNotifier {
   static String? _blockOf(String room) => _blockCode.firstMatch(room)?.group(1);
 
   /// Blocks first, alphabetical and only the ones that occur, each holding its
-  /// rooms in table order; then the rooms with no block letter, keeping the
-  /// single heading they have in the by-room layout.
+  /// rooms in table order; then the rooms with no block letter, each keeping
+  /// its own single heading.
   static List<EntrySection> _byBlock(List<ScheduleEntry> booked) {
     final blocks = <String, Map<String, List<ScheduleEntry>>>{};
     final loose = <String, List<ScheduleEntry>>{};
