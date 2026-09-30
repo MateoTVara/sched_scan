@@ -1,6 +1,7 @@
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter/widgets.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:sched_scan/schedule/models/entry_section.dart';
 import 'package:sched_scan/schedule/models/schedule_entry.dart';
 import 'package:sched_scan/schedule/models/schedule_line.dart';
 import 'package:sched_scan/schedule/models/schedule_source.dart';
@@ -17,16 +18,23 @@ class ScannerViewModel extends ChangeNotifier {
 
   /// Every parsed PDF entry in table order, free slots included; empty for
   /// image scans and for PDFs whose text could not be split into rows (the
-  /// raw text then stands in). This, not [entriesByRoom], is the signal that
-  /// the parse worked: a document whose slots are all free still counts.
+  /// raw text then stands in). This, not the section lists, is the signal
+  /// that the parse worked: a document whose slots are all free still counts.
   List<ScheduleEntry> _entries = const [];
   List<ScheduleEntry> get entries => _entries;
 
-  /// The booked slots grouped by room — [ScheduleEntry.isFree] slots are
-  /// dropped, and so is any room left with nothing but free ones. Sections
-  /// keep table order, entries inside a section are sorted by start time.
-  Map<String, List<ScheduleEntry>> _entriesByRoom = const {};
-  Map<String, List<ScheduleEntry>> get entriesByRoom => _entriesByRoom;
+  /// The booked slots as one section per room, in the order the table prints
+  /// them, cards sorted by start time. [ScheduleEntry.isFree] slots are
+  /// dropped, and so is any room left with nothing but free ones.
+  List<EntrySection> _sectionsByRoom = const [];
+  List<EntrySection> get sectionsByRoom => _sectionsByRoom;
+
+  /// The same slots grouped by block — `Bloque A` … `Bloque K`, alphabetical
+  /// and only the blocks that actually occur — each holding a section per
+  /// room in table order. Rooms with no block letter keep their own section
+  /// after the blocks, exactly as they read in [sectionsByRoom].
+  List<EntrySection> _sectionsByBlock = const [];
+  List<EntrySection> get sectionsByBlock => _sectionsByBlock;
 
   bool _isScanning = false;
   bool get isScanning => _isScanning;
@@ -56,7 +64,8 @@ class ScannerViewModel extends ChangeNotifier {
 
   Future<String> _scanImage(XFile file) async {
     _entries = const [];
-    _entriesByRoom = const {};
+    _sectionsByRoom = const [];
+    _sectionsByBlock = const [];
 
     final input = InputImage.fromFilePath(file.path);
     final result = await _textRecognizer.processImage(input);
@@ -65,7 +74,8 @@ class ScannerViewModel extends ChangeNotifier {
 
   Future<String> _scanPdf(XFile file) async {
     _entries = const [];
-    _entriesByRoom = const {};
+    _sectionsByRoom = const [];
+    _sectionsByBlock = const [];
 
     final bytes = await file.readAsBytes();
     final document = PdfDocument(inputBytes: bytes);
@@ -74,7 +84,12 @@ class ScannerViewModel extends ChangeNotifier {
       final entries = _parser.parse(_toScheduleLines(extractor));
       if (entries.isNotEmpty) {
         _entries = entries;
-        _entriesByRoom = _groupByRoom(entries);
+        final booked = [
+          for (final entry in entries)
+            if (!entry.isFree) entry,
+        ];
+        _sectionsByRoom = _byRoom(booked);
+        _sectionsByBlock = _byBlock(booked);
       }
       return extractor.extractText();
     } finally {
@@ -102,27 +117,72 @@ class ScannerViewModel extends ChangeNotifier {
     ];
   }
 
-  /// Groups the slots worth showing: free rooms are dropped outright, and a
-  /// room whose slots are all free disappears from the map. Table order is
-  /// kept because a plain `Map` preserves insertion order.
-  static Map<String, List<ScheduleEntry>> _groupByRoom(
-    List<ScheduleEntry> entries,
-  ) {
-    final grouped = <String, List<ScheduleEntry>>{};
-    for (final entry in entries) {
-      if (entry.isFree) continue;
-      grouped.putIfAbsent(entry.room, () => []).add(entry);
+  /// One section per room, in the order the table prints them — the order in
+  /// which each room's first booked slot appears.
+  static List<EntrySection> _byRoom(List<ScheduleEntry> booked) {
+    final rooms = <String, List<ScheduleEntry>>{};
+    for (final entry in booked) {
+      rooms.putIfAbsent(entry.room, () => []).add(entry);
     }
-    for (final section in grouped.values) {
-      section.sort((a, b) {
-        final start = a.start;
-        final otherStart = b.start;
-        if (start == null && otherStart == null) return 0;
-        if (start == null) return 1;
-        if (otherStart == null) return -1;
-        return start.compareTo(otherStart);
-      });
+    for (final slots in rooms.values) {
+      _sortByStart(slots);
     }
-    return grouped;
+    return [
+      for (final room in rooms.entries)
+        EntrySection(room.key, entries: room.value),
+    ];
+  }
+
+  /// The block a room belongs to: the `<letter>-<digit>` code printed in its
+  /// name — `AULA A-203` → `A`, `J-110A (…)` → `J`, `MÚLTIPLE C-202` → `C`.
+  /// The code has to start a word, so a hyphen inside one (`TALLER-2`) is not
+  /// a block. A room with no code (`LOSA DEPORTIVA`) belongs to none.
+  static final RegExp _blockCode = RegExp(r'(?:^|\s)([A-Z])-\d');
+
+  static String? _blockOf(String room) => _blockCode.firstMatch(room)?.group(1);
+
+  /// Blocks first, alphabetical and only the ones that occur, each holding its
+  /// rooms in table order; then the rooms with no block letter, keeping the
+  /// single heading they have in the by-room layout.
+  static List<EntrySection> _byBlock(List<ScheduleEntry> booked) {
+    final blocks = <String, Map<String, List<ScheduleEntry>>>{};
+    final loose = <String, List<ScheduleEntry>>{};
+    for (final entry in booked) {
+      final block = _blockOf(entry.room);
+      if (block == null) {
+        loose.putIfAbsent(entry.room, () => []).add(entry);
+      } else {
+        (blocks[block] ??= {}).putIfAbsent(entry.room, () => []).add(entry);
+      }
+    }
+    for (final rooms in blocks.values) {
+      for (final slots in rooms.values) {
+        _sortByStart(slots);
+      }
+    }
+    for (final slots in loose.values) {
+      _sortByStart(slots);
+    }
+
+    final present = blocks.keys.toList()..sort();
+    return [
+      for (final block in present)
+        EntrySection('Bloque $block', rooms: blocks[block]!),
+      for (final room in loose.entries)
+        EntrySection(room.key, entries: room.value),
+    ];
+  }
+
+  /// Puts one room's slots in start-time order, entries without a printed time
+  /// last. `HH:MM` compares correctly as a string.
+  static void _sortByStart(List<ScheduleEntry> slots) {
+    slots.sort((a, b) {
+      final start = a.start;
+      final otherStart = b.start;
+      if (start == null && otherStart == null) return 0;
+      if (start == null) return 1;
+      if (otherStart == null) return -1;
+      return start.compareTo(otherStart);
+    });
   }
 }

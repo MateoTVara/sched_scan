@@ -15,7 +15,7 @@ class ScheduleView extends StatelessWidget {
       listenable: viewModel,
       builder: (context, _) {
         return switch (viewModel.source) {
-          null => const Text('No file selected yet.'),
+          null => const Text('Selecciona un archivo.'),
           ScheduleImage(:final file) => Image.file(File(file.path)),
           SchedulePdf() => const Icon(Icons.picture_as_pdf, size: 64),
         };

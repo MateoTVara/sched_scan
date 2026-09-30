@@ -35,7 +35,7 @@ class EntryCard extends StatelessWidget {
                   if (entry.section != null)
                     Padding(
                       padding: const EdgeInsets.only(left: 8),
-                      child: _Badge(label: 'SEC ${entry.section}'),
+                      child: _Badge(label: 'Sec. ${entry.section}'),
                     ),
                   if (entry.status != null)
                     Padding(

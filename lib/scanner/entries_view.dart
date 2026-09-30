@@ -1,25 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:sched_scan/scanner/entry_card.dart';
-import 'package:sched_scan/schedule/models/schedule_entry.dart';
+import 'package:sched_scan/schedule/models/entry_section.dart';
 
-/// Parsed schedule entries grouped by room: a section header per room with
-/// that room's slots as cards underneath, already ordered by start time.
+/// The parsed schedule as cards under their headings: one heading per room in
+/// the "by room" layout, or a block heading over a heading per room in the
+/// "by block" layout. Cards are already ordered by start time.
 ///
 /// Free (`LIBRE`) slots never reach this view — they are dropped when the
-/// entries are grouped — so an empty map means nothing is booked anywhere,
+/// entries are grouped — so an empty list means nothing is booked anywhere,
 /// which gets a message rather than a blank page.
 class EntriesView extends StatelessWidget {
-  const EntriesView({super.key, required this.entriesByRoom});
+  const EntriesView({super.key, required this.sections});
 
-  final Map<String, List<ScheduleEntry>> entriesByRoom;
+  final List<EntrySection> sections;
 
   @override
   Widget build(BuildContext context) {
-    final sections = entriesByRoom.entries.toList(growable: false);
     if (sections.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(16),
-        child: Text('No slots booked — every room is free.'),
+        child: Text('Sin reservas: todas las aulas están libres.'),
       );
     }
 
@@ -33,18 +33,32 @@ class EntriesView extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-              child: Text(
-                section.key,
-                style: Theme.of(context).textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.bold),
-              ),
-            ),
-            for (final entry in section.value) EntryCard(entry: entry),
+            _heading(context, section.title, level: 0),
+            for (final entry in section.entries) EntryCard(entry: entry),
+            for (final room in section.rooms.entries) ...[
+              _heading(context, room.key, level: 1),
+              for (final entry in room.value) EntryCard(entry: entry),
+            ],
           ],
         );
       },
+    );
+  }
+
+  /// A block heading sits loose and large at level 0; the rooms it groups sit
+  /// tighter and smaller underneath.
+  static Widget _heading(
+    BuildContext context,
+    String text, {
+    required int level,
+  }) {
+    final theme = Theme.of(context);
+    final style = level == 0
+        ? theme.textTheme.titleMedium
+        : theme.textTheme.titleSmall;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, level == 0 ? 20 : 12, 16, 8),
+      child: Text(text, style: style?.copyWith(fontWeight: FontWeight.bold)),
     );
   }
 }

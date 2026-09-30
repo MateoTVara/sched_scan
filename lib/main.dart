@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sched_scan/scanner/grouping.dart';
 import 'package:sched_scan/scanner/scanner_view.dart';
 import 'package:sched_scan/scanner/scanner_viewmodel.dart';
 import 'package:sched_scan/schedule/schedule_view.dart';
@@ -22,10 +23,17 @@ class _MainAppState extends State<MainApp> {
   final _scannerViewModel = ScannerViewModel();
 
   InputMode _mode = InputMode.pdf;
+  Grouping _grouping = Grouping.room;
 
   void _toggleMode() {
     setState(() {
       _mode = _mode == InputMode.image ? InputMode.pdf : InputMode.image;
+    });
+  }
+
+  void _toggleGrouping() {
+    setState(() {
+      _grouping = _grouping == Grouping.room ? Grouping.block : Grouping.room;
     });
   }
 
@@ -60,7 +68,17 @@ class _MainAppState extends State<MainApp> {
             IconButton(
               onPressed: _toggleMode,
               icon: const Icon(Icons.sync_alt, color: Colors.white),
-              tooltip: 'Switch between image and pdf',
+              tooltip: 'Cambiar entre imagen y PDF',
+            ),
+            IconButton(
+              onPressed: _toggleGrouping,
+              icon: Icon(
+                _grouping == Grouping.room
+                    ? Icons.meeting_room
+                    : Icons.apartment,
+                color: Colors.white,
+              ),
+              tooltip: 'Agrupar por aula o bloque',
             ),
           ],
         ),
@@ -69,7 +87,7 @@ class _MainAppState extends State<MainApp> {
             child: Column(
               children: [
                 ScheduleView(viewModel: _scheduleViewModel),
-                ScannerView(viewModel: _scannerViewModel),
+                ScannerView(viewModel: _scannerViewModel, grouping: _grouping),
               ],
             ),
           ),
