@@ -1,5 +1,5 @@
 {
-  description = "A very basic flake";
+  description = "sched_scan (Schedule Scanner) — Flutter builds for Linux and web, plus a dev shell with the Android toolchain";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

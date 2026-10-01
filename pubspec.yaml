@@ -1,5 +1,5 @@
 name: sched_scan
-description: "A new Flutter project."
+description: "Schedule Scanner — pick a schedule as an image or PDF: on-device OCR for images, geometric parsing of PDFs into filterable reservation cards."
 publish_to: 'none'
 version: 0.1.1+1
 
