@@ -1,6 +1,7 @@
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter/widgets.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:sched_scan/scanner/models/section_filter.dart';
 import 'package:sched_scan/schedule/models/entry_section.dart';
 import 'package:sched_scan/schedule/models/schedule_entry.dart';
 import 'package:sched_scan/schedule/models/schedule_line.dart';
@@ -31,6 +32,43 @@ class ScannerViewModel extends ChangeNotifier {
   List<EntrySection> _sectionsByBlock = const [];
   List<EntrySection> get sectionsByBlock => _sectionsByBlock;
 
+  /// The titles of [_sectionsByBlock] narrowed to. Empty means "no filter":
+  /// every section shows — the initial state, and what a new scan resets to.
+  Set<String> _selectedSections = {};
+
+  /// The filter row over [sectionsByBlock]: the same sections, the current
+  /// selection, and [toggleSection] to flip one.
+  SectionFilter get sectionFilter => SectionFilter(
+    sections: _sectionsByBlock,
+    selected: Set.unmodifiable(_selectedSections),
+    toggle: toggleSection,
+  );
+
+  /// What the card list renders: every section while nothing is selected,
+  /// the selected ones only once a chip has been picked.
+  List<EntrySection> get visibleSectionsByBlock => _selectedSections.isEmpty
+      ? _sectionsByBlock
+      : [
+          for (final section in _sectionsByBlock)
+            if (_selectedSections.contains(section.title)) section,
+        ];
+
+  /// Adds [title] to the selection or takes it out again — deselecting the
+  /// last one empties the selection and brings every section back.
+  void toggleSection(String title) {
+    if (!_selectedSections.remove(title)) {
+      _selectedSections.add(title);
+    }
+    notifyListeners();
+  }
+
+  /// Replaces the sections and empties the selection: a new scan starts
+  /// over with no filter, so everything shows.
+  void _setSections(List<EntrySection> sections) {
+    _sectionsByBlock = sections;
+    _selectedSections = {};
+  }
+
   bool _isScanning = false;
   bool get isScanning => _isScanning;
 
@@ -59,7 +97,7 @@ class ScannerViewModel extends ChangeNotifier {
 
   Future<String> _scanImage(XFile file) async {
     _entries = const [];
-    _sectionsByBlock = const [];
+    _setSections(const []);
 
     final input = InputImage.fromFilePath(file.path);
     final result = await _textRecognizer.processImage(input);
@@ -68,7 +106,7 @@ class ScannerViewModel extends ChangeNotifier {
 
   Future<String> _scanPdf(XFile file) async {
     _entries = const [];
-    _sectionsByBlock = const [];
+    _setSections(const []);
 
     final bytes = await file.readAsBytes();
     final document = PdfDocument(inputBytes: bytes);
@@ -81,7 +119,7 @@ class ScannerViewModel extends ChangeNotifier {
           for (final entry in entries)
             if (!entry.isFree) entry,
         ];
-        _sectionsByBlock = _byBlock(booked);
+        _setSections(_byBlock(booked));
       }
       return extractor.extractText();
     } finally {

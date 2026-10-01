@@ -190,6 +190,53 @@ void main() {
     );
   }, skip: _missing);
 
+  test(
+    'the section filter starts with nothing selected, showing everything',
+    () async {
+      final viewModel = _viewModel();
+
+      await viewModel.scan(SchedulePdf(_sample()));
+
+      final sections = viewModel.sectionsByBlock;
+      expect(sections, isNotEmpty);
+
+      // Nothing starts selected: an empty selection shows every section.
+      expect(viewModel.sectionFilter.selected, isEmpty);
+      expect(viewModel.visibleSectionsByBlock, sections);
+
+      // Picking a section narrows the card list to it — the chip row keeps
+      // them all, so the pick can be undone...
+      final first = sections.first;
+      viewModel.toggleSection(first.title);
+      expect(viewModel.visibleSectionsByBlock, [first]);
+      expect(viewModel.sectionsByBlock, sections);
+      expect(viewModel.sectionFilter.selected, {first.title});
+
+      // ...and deselecting the last pick empties the selection, which
+      // shows everything again.
+      viewModel.toggleSection(first.title);
+      expect(viewModel.sectionFilter.selected, isEmpty);
+      expect(viewModel.visibleSectionsByBlock, sections);
+    },
+    skip: _missing,
+  );
+
+  test('a new scan forgets the previous filter', () async {
+    final viewModel = _viewModel();
+
+    await viewModel.scan(SchedulePdf(_sample()));
+    viewModel.toggleSection(viewModel.sectionsByBlock.first.title);
+    // Narrowed to just the pick.
+    expect(viewModel.visibleSectionsByBlock, hasLength(1));
+
+    await viewModel.scan(SchedulePdf(_sample()));
+
+    // The selection is emptied: no pick outlives its scan, so the full
+    // list shows again.
+    expect(viewModel.sectionFilter.selected, isEmpty);
+    expect(viewModel.visibleSectionsByBlock, viewModel.sectionsByBlock);
+  }, skip: _missing);
+
   test('scan is a no-op without a source', () async {
     final viewModel = _viewModel();
 

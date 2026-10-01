@@ -66,15 +66,21 @@ class _MainAppState extends State<MainApp> {
         ),
         body: ListenableBuilder(
           listenable: _scheduleViewModel,
-          builder: (context, _) => CustomScrollView(
-            slivers: [
-              ScheduleView(viewModel: _scheduleViewModel),
-              // While no source exists, ScheduleView fills the viewport with
-              // the initial prompt and the scanner has nothing to show — it
-              // only joins once there is something to scan.
-              if (_scheduleViewModel.source != null)
-                ScannerView(viewModel: _scannerViewModel),
-            ],
+          // The app bar covers the top inset; at the bottom the body must
+          // end above the (translucent) system navigation bar instead of
+          // scrolling behind it — the FAB already clears it on its own.
+          builder: (context, _) => SafeArea(
+            top: false,
+            child: CustomScrollView(
+              slivers: [
+                ScheduleView(viewModel: _scheduleViewModel),
+                // While no source exists, ScheduleView fills the viewport
+                // with the initial prompt and the scanner has nothing to
+                // show — it only joins once there is something to scan.
+                if (_scheduleViewModel.source != null)
+                  ScannerView(viewModel: _scannerViewModel),
+              ],
+            ),
           ),
         ),
         floatingActionButton: FloatingActionButton(

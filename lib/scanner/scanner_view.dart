@@ -27,7 +27,10 @@ class ScannerView extends StatelessWidget {
           ),
           // Something parsed, so show the cards — even when every slot in
           // the document turned out to be free.
-          (_, true, _) => EntriesView(sections: viewModel.sectionsByBlock),
+          (_, true, _) => EntriesView(
+            sections: viewModel.visibleSectionsByBlock,
+            filter: viewModel.sectionFilter,
+          ),
           (_, false, final String text) => SliverToBoxAdapter(
             child: Center(child: Text(text)),
           ),

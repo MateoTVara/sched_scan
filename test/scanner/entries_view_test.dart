@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sched_scan/scanner/entry_card.dart';
 import 'package:sched_scan/scanner/entries_view.dart';
+import 'package:sched_scan/scanner/models/section_filter.dart';
 import 'package:sched_scan/schedule/models/entry_section.dart';
 import 'package:sched_scan/schedule/models/schedule_entry.dart';
 
@@ -73,6 +74,47 @@ double _headingTop(WidgetTester tester, String text) => tester
       ),
     )
     .dy;
+
+/// EntriesView wired the way `ScannerView` wires it: the visible list is
+/// derived from the selection, and tapping a chip flips it.
+class _FilterHost extends StatefulWidget {
+  const _FilterHost(this.sections);
+
+  final List<EntrySection> sections;
+
+  @override
+  State<_FilterHost> createState() => _FilterHostState();
+}
+
+class _FilterHostState extends State<_FilterHost> {
+  // Nothing selected at first: like the viewmodel, an empty selection
+  // shows every section.
+  late final _selected = <String>{};
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      slivers: [
+        EntriesView(
+          sections: [
+            if (_selected.isEmpty)
+              ...widget.sections
+            else
+              for (final section in widget.sections)
+                if (_selected.contains(section.title)) section,
+          ],
+          filter: SectionFilter(
+            sections: widget.sections,
+            selected: _selected,
+            toggle: (title) => setState(() {
+              if (!_selected.remove(title)) _selected.add(title);
+            }),
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 void main() {
   testWidgets('renders a blockless room as its own heading with its cards', (
@@ -243,5 +285,143 @@ void main() {
         if (top(text) case final y? when y >= 0 && y < viewport) text,
     ];
     expect(holding.length, lessThanOrEqualTo(2));
+  });
+
+  testWidgets('renders one filter chip per section: block letters and room '
+      'names', (tester) async {
+    final sections = _stickySections();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CustomScrollView(
+          slivers: [
+            EntriesView(
+              sections: sections,
+              filter: SectionFilter(
+                sections: sections,
+                selected: const {}, // the initial state: no pick yet
+                toggle: (_) {},
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final chipA = find.byKey(const ValueKey('filter-Bloque A'));
+    final chipB = find.byKey(const ValueKey('filter-Bloque B'));
+    final chipLosa = find.byKey(const ValueKey('filter-LOSA DEPORTIVA'));
+    expect(chipA, findsOneWidget);
+    expect(chipB, findsOneWidget);
+    expect(chipLosa, findsOneWidget);
+
+    // A block chips its letter, a blockless room its full name; only the
+    // heading spells the block out in full.
+    expect(
+      find.descendant(of: chipA, matching: find.text('A')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: chipB, matching: find.text('B')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: chipLosa, matching: find.text('LOSA DEPORTIVA')),
+      findsOneWidget,
+    );
+    expect(find.text('Bloque A'), findsOneWidget);
+  });
+
+  testWidgets('a chip picks its section, deselecting the last shows '
+      'everything', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: _FilterHost(_stickySections())));
+
+    final chip = find.byKey(const ValueKey('filter-Bloque A'));
+    // Nothing selected to start with: every section shows and the chips
+    // sit outlined.
+    expect(find.text('Bloque A'), findsOneWidget);
+    expect(find.text('Bloque B'), findsOneWidget);
+    expect(find.text('LOSA DEPORTIVA'), findsWidgets); // chip and heading
+    expect(tester.widget<Material>(chip).color, Colors.transparent);
+
+    // Picking a chip narrows the list to just that section...
+    await tester.tap(chip);
+    await tester.pump();
+
+    expect(find.text('Bloque A'), findsOneWidget);
+    expect(find.text('AULA A-101'), findsOneWidget);
+    expect(find.text('Bloque B'), findsNothing); // heading gone, chip stays
+    expect(chip, findsOneWidget);
+    expect(tester.widget<Material>(chip).color, isNot(Colors.transparent));
+
+    // ...and deselecting the last pick empties the selection, which shows
+    // everything again.
+    await tester.tap(chip);
+    await tester.pump();
+
+    expect(find.text('Bloque A'), findsOneWidget);
+    expect(find.text('AULA A-101'), findsOneWidget);
+    expect(find.text('Bloque B'), findsOneWidget);
+    expect(tester.widget<Material>(chip).color, Colors.transparent);
+  });
+
+  testWidgets('the filter bar hides scrolling down and floats back in '
+      'when scrolling up', (tester) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    final sections = _stickySections();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CustomScrollView(
+          controller: controller,
+          slivers: [
+            EntriesView(
+              sections: sections,
+              filter: SectionFilter(
+                sections: sections,
+                selected: const {}, // the initial state: no pick yet
+                toggle: (_) {},
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final bar = find.byKey(const ValueKey('filter-bar'));
+
+    // At rest the bar sits at the top and the first heading in flow below
+    // it — never underneath it.
+    expect(bar.hitTestable(), findsOneWidget);
+    expect(tester.getTopLeft(bar).dy, moreOrLessEquals(0));
+    final barBottom = tester.getBottomLeft(bar).dy;
+    expect(barBottom, greaterThan(0));
+    expect(_headingTop(tester, 'Bloque A'), greaterThanOrEqualTo(barBottom));
+
+    // Scrolling down: the bar scrolls away with the content and the pinned
+    // heading takes the top for itself.
+    controller.jumpTo(300);
+    await tester.pump();
+    expect(bar.hitTestable(), findsNothing);
+    expect(_headingTop(tester, 'Bloque A'), moreOrLessEquals(0));
+
+    // Scrolling back up at depth: the bar floats back in over the cards
+    // without waiting for the top...
+    await tester.timedDrag(
+      find.byType(CustomScrollView),
+      const Offset(0, 60),
+      const Duration(milliseconds: 300),
+    );
+    await tester.pumpAndSettle();
+
+    expect(controller.position.pixels, greaterThan(60)); // still deep
+    expect(bar.hitTestable(), findsOneWidget);
+    // ...at the top of the viewport...
+    expect(tester.getTopLeft(bar).dy, moreOrLessEquals(0));
+    // ...with the pinned heading below it instead of covering it.
+    expect(
+      _headingTop(tester, 'Bloque A'),
+      greaterThanOrEqualTo(tester.getBottomLeft(bar).dy),
+    );
   });
 }
