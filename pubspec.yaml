@@ -13,6 +13,7 @@ dependencies:
     sdk: flutter
   google_mlkit_text_recognition: ^0.17.1
   image_picker: ^1.2.3
+  sliver_tools: ^0.2.12
   syncfusion_flutter_pdf: ^34.2.9
 
 dev_dependencies:

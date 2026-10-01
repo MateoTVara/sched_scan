@@ -64,14 +64,17 @@ class _MainAppState extends State<MainApp> {
             ),
           ],
         ),
-        body: Center(
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                ScheduleView(viewModel: _scheduleViewModel),
+        body: ListenableBuilder(
+          listenable: _scheduleViewModel,
+          builder: (context, _) => CustomScrollView(
+            slivers: [
+              ScheduleView(viewModel: _scheduleViewModel),
+              // While no source exists, ScheduleView fills the viewport with
+              // the initial prompt and the scanner has nothing to show — it
+              // only joins once there is something to scan.
+              if (_scheduleViewModel.source != null)
                 ScannerView(viewModel: _scannerViewModel),
-              ],
-            ),
+            ],
           ),
         ),
         floatingActionButton: FloatingActionButton(
