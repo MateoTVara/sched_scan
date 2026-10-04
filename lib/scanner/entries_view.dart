@@ -80,10 +80,10 @@ class EntriesView extends StatelessWidget {
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
+              spacing: 8,
               mainAxisSize: MainAxisSize.min,
               children: [
-                for (final (index, section) in filter.sections.indexed) ...[
-                  if (index > 0) const SizedBox(width: 8),
+                for (final section in filter.sections) ...[
                   _chip(context, section, filter),
                 ],
               ],

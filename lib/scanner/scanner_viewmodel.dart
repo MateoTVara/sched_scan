@@ -1,5 +1,8 @@
+// import 'dart:typed_data';
+
 import 'package:cross_file/cross_file.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart';
+// import 'package:flutter/widgets.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:sched_scan/scanner/models/section_filter.dart';
 import 'package:sched_scan/schedule/models/entry_section.dart';
@@ -12,7 +15,7 @@ import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 class ScannerViewModel extends ChangeNotifier {
   final _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-  final _parser = ScheduleParser();
+  // final _parser = ScheduleParser();
 
   String? _recognizedText;
   String? get recognizedText => _recognizedText;
@@ -109,22 +112,28 @@ class ScannerViewModel extends ChangeNotifier {
     _setSections(const []);
 
     final bytes = await file.readAsBytes();
-    final document = PdfDocument(inputBytes: bytes);
-    try {
-      final extractor = PdfTextExtractor(document);
-      final entries = _parser.parse(_toScheduleLines(extractor));
-      if (entries.isNotEmpty) {
-        _entries = entries;
-        final booked = [
-          for (final entry in entries)
-            if (!entry.isFree) entry,
-        ];
-        _setSections(_byBlock(booked));
-      }
-      return extractor.extractText();
-    } finally {
-      document.dispose();
-    }
+    // final document = PdfDocument(inputBytes: bytes);
+    // try {
+    //   final extractor = PdfTextExtractor(document);
+    //   final entries = _parser.parse(_toScheduleLines(extractor));
+    //   if (entries.isNotEmpty) {
+    //     _entries = entries;
+    //     final booked = [
+    //       for (final entry in entries)
+    //         if (!entry.isFree) entry,
+    //     ];
+    //     _setSections(_byBlock(booked));
+    //   }
+    //   return extractor.extractText();
+    // } finally {
+    //   document.dispose();
+    // }
+    final result = await compute(_parsePdfInBackground, bytes);
+    
+    _entries = result.entries;
+    _setSections(result.sections);
+
+    return result.text;
   }
 
   static List<ScheduleLine> _toScheduleLines(PdfTextExtractor extractor) {
@@ -198,5 +207,43 @@ class ScannerViewModel extends ChangeNotifier {
       if (otherStart == null) return -1;
       return start.compareTo(otherStart);
     });
+  }
+}
+
+class _PdfScanResult {
+  const _PdfScanResult({
+    required this.text,
+    required this.entries,
+    required this.sections,
+  });
+
+  final String text;
+  final List<ScheduleEntry> entries;
+  final List<EntrySection> sections;
+}
+
+_PdfScanResult _parsePdfInBackground(Uint8List bytes) {
+  final document = PdfDocument(inputBytes: bytes);
+  try {
+    final extractor = PdfTextExtractor(document);
+
+    final entries = ScheduleParser().parse(
+      ScannerViewModel._toScheduleLines(extractor),
+    );
+
+    final sections = entries.isEmpty
+      ? const <EntrySection>[]
+      : ScannerViewModel._byBlock([
+        for (final entry in entries)
+          if (!entry.isFree) entry
+      ]);
+
+    return _PdfScanResult(
+      text: extractor.extractText(),
+      entries: entries,
+      sections: sections,
+    );
+  } finally {
+    document.dispose();
   }
 }

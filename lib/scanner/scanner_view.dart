@@ -22,7 +22,8 @@ class ScannerView extends StatelessWidget {
           viewModel.entries.isNotEmpty,
           viewModel.recognizedText,
         )) {
-          (true, _, _) => const SliverToBoxAdapter(
+          (true, _, _) => const SliverFillRemaining(
+            hasScrollBody: false,
             child: Center(child: CircularProgressIndicator()),
           ),
           // Something parsed, so show the cards — even when every slot in

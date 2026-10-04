@@ -19,10 +19,12 @@ class EntryCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
+          spacing: 4,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (title != null || entry.status != null)
               Row(
+                spacing: 8,
                 children: [
                   Expanded(
                     child: Text(
@@ -32,42 +34,28 @@ class EntryCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (entry.section != null)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: _Badge(label: 'Sec. ${entry.section}'),
-                    ),
-                  if (entry.status != null)
-                    Padding(
-                      padding: EdgeInsets.only(left: title == null ? 0 : 8),
-                      child: _StatusChip(status: entry.status!),
-                    ),
+                  if (entry.section != null) _Badge(label: 'Sec. ${entry.section}'),
+                  if (entry.status != null) _StatusChip(status: entry.status!),
                 ],
               ),
             if (program != null && program != title)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
+              Text(
                   program,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.outline,
                   ),
                 ),
-              ),
             if (entry.person != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(entry.person!, style: theme.textTheme.bodySmall),
-              ),
-            const SizedBox(height: 8),
+              Text(entry.person!, style: theme.textTheme.bodySmall),
+            const SizedBox(height: 4),
             Row(
+              spacing: 4,
               children: [
                 Icon(
                   Icons.schedule,
                   size: 16,
                   color: theme.colorScheme.outline,
                 ),
-                const SizedBox(width: 4),
                 Text(
                   entry.timeLabel,
                   style: theme.textTheme.labelMedium?.copyWith(
@@ -85,13 +73,10 @@ class EntryCard extends StatelessWidget {
               ],
             ),
             for (final note in entry.notes)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  note,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontStyle: FontStyle.italic,
-                  ),
+              Text(
+                note,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontStyle: FontStyle.italic,
                 ),
               ),
           ],
