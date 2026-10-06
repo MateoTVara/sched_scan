@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:sched_scan/scanner/scanner_view.dart';
 import 'package:sched_scan/schedule/schedule_viewmodel.dart';
 
 /// The app's opening prompt as slivers, shown while nothing has been picked
@@ -22,22 +21,9 @@ class ScheduleView extends StatelessWidget {
           return const SliverToBoxAdapter(child: SizedBox.shrink());
         }
 
-        // Nothing picked: both opening lines as one block filling the
-        // viewport, so they sit centred on the screen instead of two
-        // slivers stacked at the top. They always show together at this
-        // point — the scanner has nothing to add while there is no
-        // source, so `main.dart` leaves it out until one exists.
         return const SliverFillRemaining(
           hasScrollBody: false,
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Selecciona un archivo.'),
-                ScannerView.noTextMessage,
-              ],
-            ),
-          ),
+          child: Center(child: Text('Selecciona un archivo.')),
         );
       },
     );

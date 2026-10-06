@@ -191,7 +191,7 @@ void main() {
   }, skip: _missing);
 
   test(
-    'the section filter starts with nothing selected, showing everything',
+    'the section filter starts with nothing selected, showing no section',
     () async {
       final viewModel = _viewModel();
 
@@ -200,9 +200,10 @@ void main() {
       final sections = viewModel.sectionsByBlock;
       expect(sections, isNotEmpty);
 
-      // Nothing starts selected: an empty selection shows every section.
+      // Nothing starts selected: the card list is empty, so the view shows
+      // its "Selecciona un bloque." prompt instead of every section.
       expect(viewModel.sectionFilter.selected, isEmpty);
-      expect(viewModel.visibleSectionsByBlock, sections);
+      expect(viewModel.visibleSectionsByBlock, isEmpty);
 
       // Picking a section narrows the card list to it — the chip row keeps
       // them all, so the pick can be undone...
@@ -212,11 +213,11 @@ void main() {
       expect(viewModel.sectionsByBlock, sections);
       expect(viewModel.sectionFilter.selected, {first.title});
 
-      // ...and deselecting the last pick empties the selection, which
-      // shows everything again.
+      // ...and deselecting the last pick empties the selection again,
+      // which brings the prompt back rather than every section.
       viewModel.toggleSection(first.title);
       expect(viewModel.sectionFilter.selected, isEmpty);
-      expect(viewModel.visibleSectionsByBlock, sections);
+      expect(viewModel.visibleSectionsByBlock, isEmpty);
     },
     skip: _missing,
   );
@@ -231,10 +232,12 @@ void main() {
 
     await viewModel.scan(SchedulePdf(_sample()));
 
-    // The selection is emptied: no pick outlives its scan, so the full
-    // list shows again.
+    // The selection is emptied: no pick outlives its scan, so the new
+    // scan starts back at the empty selection — every section still on
+    // hand behind the prompt, ready for a chip.
     expect(viewModel.sectionFilter.selected, isEmpty);
-    expect(viewModel.visibleSectionsByBlock, viewModel.sectionsByBlock);
+    expect(viewModel.visibleSectionsByBlock, isEmpty);
+    expect(viewModel.sectionsByBlock, isNotEmpty);
   }, skip: _missing);
 
   test('scan is a no-op without a source', () async {

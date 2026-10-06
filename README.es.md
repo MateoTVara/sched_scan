@@ -14,13 +14,15 @@ Lee un horario en pantalla en lugar de forzar la vista:
 Las tarjetas se agrupan por bloque (`Bloque A` … `Bloque K`) con encabezados
 fijos (sticky): el encabezado del bloque abarca sus aulas, el de cada aula se
 fija mientras sus tarjetas están a la vista, y los horarios de cada aula van
-ordenados por hora de inicio. Una barra flotante de chips filtra la lista a
-los bloques (chip con la letra) o aulas sin bloque (chip con el nombre) que
-te interesan: al bajar se oculta con el contenido y al subir reaparece a
-cualquier altura; al inicio nada está seleccionado, así que se muestra todo
-hasta que elijas. Toda la interfaz está en español, y la app arranca en modo
-PDF — un conmutador imagen/PDF está en la AppBar para el día en que la
-imagen funcione.
+ordenados por hora de inicio. Una barra flotante de chips filtra la lista: al
+bajar se oculta con el contenido y al subir reaparece a cualquier altura. Al
+inicio nada está seleccionado, así que la lista arranca con un aviso
+`Selecciona un bloque.` y solo muestra los bloques (chip con la letra) o las
+aulas sin bloque (chip con el nombre) que elijas — al deseleccionar el último
+vuelve el aviso, y un horario sin reservas muestra
+`Sin reservas: todas las aulas están libres.` Toda la interfaz está en
+español, y la app arranca en modo PDF — un conmutador imagen/PDF está en la
+AppBar para el día en que la imagen funcione.
 
 ## Primeros pasos
 
@@ -99,8 +101,10 @@ lib/
 
 `ScheduleParser` convierte la geometría de las palabras del PDF en registros
 `ScheduleEntry` — Dart puro, sin Flutter — y `ScannerViewModel` los agrupa en
-las secciones que dibuja la lista. El cuerpo es un único `CustomScrollView`:
-cada vista emite slivers, con encabezados fijos de `sliver_tools`.
+las secciones que dibuja la lista. La lectura y el parseo corren en un
+isolate en segundo plano (`compute`), así que un horario largo nunca bloquea
+la UI. El cuerpo es un único `CustomScrollView`: cada vista emite slivers,
+con encabezados fijos de `sliver_tools`.
 
 ## Pruebas
 
@@ -111,6 +115,6 @@ flutter test
 Las pruebas reflejan `lib/` bajo `test/`: pruebas unitarias de los
 viewmodels (incluida una ida y vuelta del parser sobre
 `test/fixtures/sample.pdf`) y pruebas de widget para la lista de tarjetas,
-los encabezados fijos y la barra de filtros. La rama de imágenes pasa por
-ML Kit, que no tiene implementación en el host, así que no se prueba con
-unidad.
+los encabezados fijos, la barra de filtros, los dos estados vacíos y el
+prompt inicial. La rama de imágenes pasa por ML Kit, que no tiene
+implementación en el host, así que no se prueba con unidad.

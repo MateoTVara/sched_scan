@@ -34,17 +34,18 @@ class EntryCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (entry.section != null) _Badge(label: 'Sec. ${entry.section}'),
+                  if (entry.section != null)
+                    _Badge(label: 'Sec. ${entry.section}'),
                   if (entry.status != null) _StatusChip(status: entry.status!),
                 ],
               ),
             if (program != null && program != title)
               Text(
-                  program,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.outline,
-                  ),
+                program,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.outline,
                 ),
+              ),
             if (entry.person != null)
               Text(entry.person!, style: theme.textTheme.bodySmall),
             const SizedBox(height: 4),

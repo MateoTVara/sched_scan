@@ -7,8 +7,7 @@ class ScannerView extends StatelessWidget {
 
   const ScannerView({super.key, required this.viewModel});
 
-  /// The fallback line when nothing was recognized. Also part of the
-  /// initial prompt, which `ScheduleView` composes before a source exists.
+  /// The fallback line when nothing was recognized.
   static const noTextMessage = Text('No se reconoció texto');
 
   @override
@@ -30,12 +29,17 @@ class ScannerView extends StatelessWidget {
           // the document turned out to be free.
           (_, true, _) => EntriesView(
             sections: viewModel.visibleSectionsByBlock,
+            hasBookings: viewModel.sectionsByBlock.isNotEmpty,
             filter: viewModel.sectionFilter,
           ),
-          (_, false, final String text) => SliverToBoxAdapter(
+          (_, false, final String text) => SliverFillRemaining(
+            hasScrollBody: false,
             child: Center(child: Text(text)),
           ),
-          _ => const SliverToBoxAdapter(child: Center(child: noTextMessage)),
+          _ => const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: noTextMessage),
+          ),
         };
       },
     );

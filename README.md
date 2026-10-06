@@ -14,12 +14,14 @@ Read a schedule on screen instead of squinting at it:
 The cards are grouped by block (`Bloque A` … `Bloque K`) with sticky
 headings — a block heading spans its rooms, each room's heading sticks while
 its cards are current — and every room's slots are sorted by start time. A
-floating filter bar of chips narrows the list to the blocks (letter chip) or
-blockless rooms (name chip) you care about: it scrolls away going down and
-floats back in at any height going up; nothing is selected to start with, so
-everything shows until you pick. The whole UI is in Spanish, and the app
-opens in PDF mode — an image/PDF toggle sits in the AppBar for the day image
-input works.
+floating filter bar of chips narrows the list: it scrolls away going down and
+floats back in at any height going up. Nothing is selected to start with, so
+the list opens on a `Selecciona un bloque.` prompt and shows only the blocks
+(letter chip) or blockless rooms (name chip) you pick — dropping the last pick
+brings the prompt back, and a schedule with nothing booked says
+`Sin reservas: todas las aulas están libres.` instead. The whole UI is in
+Spanish, and the app opens in PDF mode — an image/PDF toggle sits in the
+AppBar for the day image input works.
 
 ## Getting started
 
@@ -96,8 +98,10 @@ lib/
 
 `ScheduleParser` turns word-level PDF geometry into `ScheduleEntry` records —
 pure Dart, no Flutter — and `ScannerViewModel` groups them into the sections
-the card list renders. The body is a single `CustomScrollView`: every view
-emits slivers, with sticky headings from `sliver_tools`.
+the card list renders. The read-and-parse runs in a background isolate
+(`compute`), so a long schedule never blocks the UI. The body is a single
+`CustomScrollView`: every view emits slivers, with sticky headings from
+`sliver_tools`.
 
 ## Tests
 
@@ -107,5 +111,6 @@ flutter test
 
 Tests mirror `lib/` under `test/`: viewmodel unit tests (including a parser
 round-trip over `test/fixtures/sample.pdf`) and widget tests for the card
-list, the sticky headings, and the filter bar. The image branch goes through
-ML Kit, which has no host implementation, so it isn't unit-tested.
+list, the sticky headings, the filter bar, the two empty states, and the
+opening prompt. The image branch goes through ML Kit, which has no host
+implementation, so it isn't unit-tested.

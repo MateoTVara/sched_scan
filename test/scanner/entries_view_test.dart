@@ -88,7 +88,7 @@ class _FilterHost extends StatefulWidget {
 
 class _FilterHostState extends State<_FilterHost> {
   // Nothing selected at first: like the viewmodel, an empty selection
-  // shows every section.
+  // leaves the card list empty and the prompt takes its place.
   late final _selected = <String>{};
 
   @override
@@ -96,12 +96,10 @@ class _FilterHostState extends State<_FilterHost> {
     return CustomScrollView(
       slivers: [
         EntriesView(
+          hasBookings: true,
           sections: [
-            if (_selected.isEmpty)
-              ...widget.sections
-            else
-              for (final section in widget.sections)
-                if (_selected.contains(section.title)) section,
+            for (final section in widget.sections)
+              if (_selected.contains(section.title)) section,
           ],
           filter: SectionFilter(
             sections: widget.sections,
@@ -125,6 +123,7 @@ void main() {
         home: CustomScrollView(
           slivers: [
             EntriesView(
+              hasBookings: true,
               sections: [
                 EntrySection('AULA A-101', entries: const [_bookedInA]),
                 EntrySection(
@@ -158,6 +157,7 @@ void main() {
         home: CustomScrollView(
           slivers: [
             EntriesView(
+              hasBookings: true,
               sections: [
                 EntrySection(
                   'Bloque A',
@@ -187,7 +187,9 @@ void main() {
   testWidgets('says so when every room turned out to be free', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
-        home: CustomScrollView(slivers: [EntriesView(sections: [])]),
+        home: CustomScrollView(
+          slivers: [EntriesView(hasBookings: false, sections: [])],
+        ),
       ),
     );
 
@@ -195,6 +197,21 @@ void main() {
       find.text('Sin reservas: todas las aulas están libres.'),
       findsOneWidget,
     );
+    expect(find.text('Selecciona un bloque.'), findsNothing);
+  });
+
+  testWidgets('asks for a block when the parse had bookings but none is '
+      'selected', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: CustomScrollView(
+          slivers: [EntriesView(hasBookings: true, sections: [])],
+        ),
+      ),
+    );
+
+    expect(find.text('Selecciona un bloque.'), findsOneWidget);
+    expect(find.textContaining('Sin reservas'), findsNothing);
   });
 
   testWidgets('headings stick while their section is on screen and leave '
@@ -206,7 +223,9 @@ void main() {
       MaterialApp(
         home: CustomScrollView(
           controller: controller,
-          slivers: [EntriesView(sections: _stickySections())],
+          slivers: [
+            EntriesView(hasBookings: true, sections: _stickySections()),
+          ],
         ),
       ),
     );
@@ -295,10 +314,13 @@ void main() {
         home: CustomScrollView(
           slivers: [
             EntriesView(
+              hasBookings: true,
               sections: sections,
               filter: SectionFilter(
                 sections: sections,
-                selected: const {}, // the initial state: no pick yet
+                // Everything picked, so the list above is what shows —
+                // only a pick narrows it.
+                selected: const {'Bloque A', 'Bloque B', 'LOSA DEPORTIVA'},
                 toggle: (_) {},
               ),
             ),
@@ -331,36 +353,40 @@ void main() {
     expect(find.text('Bloque A'), findsOneWidget);
   });
 
-  testWidgets('a chip picks its section, deselecting the last shows '
-      'everything', (tester) async {
+  testWidgets('a chip picks its section, deselecting the last asks for '
+      'another', (tester) async {
     await tester.pumpWidget(MaterialApp(home: _FilterHost(_stickySections())));
 
     final chip = find.byKey(const ValueKey('filter-Bloque A'));
-    // Nothing selected to start with: every section shows and the chips
-    // sit outlined.
-    expect(find.text('Bloque A'), findsOneWidget);
-    expect(find.text('Bloque B'), findsOneWidget);
-    expect(find.text('LOSA DEPORTIVA'), findsWidgets); // chip and heading
+    // Nothing selected to start with: no cards, the prompt stands in for
+    // the list, and the chips sit outlined.
+    expect(find.text('Selecciona un bloque.'), findsOneWidget);
+    expect(find.text('Bloque A'), findsNothing); // no heading yet
+    expect(find.byType(EntryCard), findsNothing);
+    expect(chip, findsOneWidget);
     expect(tester.widget<Material>(chip).color, Colors.transparent);
 
-    // Picking a chip narrows the list to just that section...
+    // Picking a chip narrows the list to just that section — and turns the
+    // prompt off...
     await tester.tap(chip);
     await tester.pump();
 
+    expect(find.text('Selecciona un bloque.'), findsNothing);
     expect(find.text('Bloque A'), findsOneWidget);
     expect(find.text('AULA A-101'), findsOneWidget);
     expect(find.text('Bloque B'), findsNothing); // heading gone, chip stays
-    expect(chip, findsOneWidget);
+    expect(find.byType(EntryCard), findsWidgets); // A's cards, lazily built
     expect(tester.widget<Material>(chip).color, isNot(Colors.transparent));
 
-    // ...and deselecting the last pick empties the selection, which shows
-    // everything again.
+    // ...and deselecting the last pick empties the selection again, which
+    // brings the prompt back rather than every section.
     await tester.tap(chip);
     await tester.pump();
 
-    expect(find.text('Bloque A'), findsOneWidget);
-    expect(find.text('AULA A-101'), findsOneWidget);
-    expect(find.text('Bloque B'), findsOneWidget);
+    expect(find.text('Selecciona un bloque.'), findsOneWidget);
+    expect(find.text('Bloque A'), findsNothing);
+    expect(find.byType(EntryCard), findsNothing);
+    expect(chip, findsOneWidget);
     expect(tester.widget<Material>(chip).color, Colors.transparent);
   });
 
@@ -376,10 +402,13 @@ void main() {
           controller: controller,
           slivers: [
             EntriesView(
+              hasBookings: true,
               sections: sections,
               filter: SectionFilter(
                 sections: sections,
-                selected: const {}, // the initial state: no pick yet
+                // Everything picked, so the sections above are on screen
+                // to scroll through.
+                selected: const {'Bloque A', 'Bloque B', 'LOSA DEPORTIVA'},
                 toggle: (_) {},
               ),
             ),

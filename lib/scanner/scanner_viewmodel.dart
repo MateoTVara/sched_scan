@@ -35,8 +35,10 @@ class ScannerViewModel extends ChangeNotifier {
   List<EntrySection> _sectionsByBlock = const [];
   List<EntrySection> get sectionsByBlock => _sectionsByBlock;
 
-  /// The titles of [_sectionsByBlock] narrowed to. Empty means "no filter":
-  /// every section shows — the initial state, and what a new scan resets to.
+  /// The titles of [_sectionsByBlock] picked in the filter row. Empty means
+  /// nothing is picked: [visibleSectionsByBlock] then comes back empty and
+  /// the view shows its "Selecciona un bloque." prompt — the initial state,
+  /// and what a new scan resets to.
   Set<String> _selectedSections = {};
 
   /// The filter row over [sectionsByBlock]: the same sections, the current
@@ -47,17 +49,19 @@ class ScannerViewModel extends ChangeNotifier {
     toggle: toggleSection,
   );
 
-  /// What the card list renders: every section while nothing is selected,
-  /// the selected ones only once a chip has been picked.
+  /// What the card list renders: no section while nothing is selected — the
+  /// view then shows its "Selecciona un bloque" prompt — and the selected
+  /// ones once a chip has been picked.
   List<EntrySection> get visibleSectionsByBlock => _selectedSections.isEmpty
-      ? _sectionsByBlock
+      ? const []
       : [
           for (final section in _sectionsByBlock)
             if (_selectedSections.contains(section.title)) section,
         ];
 
   /// Adds [title] to the selection or takes it out again — deselecting the
-  /// last one empties the selection and brings every section back.
+  /// last one empties the selection, which brings the prompt back in place
+  /// of the cards.
   void toggleSection(String title) {
     if (!_selectedSections.remove(title)) {
       _selectedSections.add(title);
@@ -66,7 +70,7 @@ class ScannerViewModel extends ChangeNotifier {
   }
 
   /// Replaces the sections and empties the selection: a new scan starts
-  /// over with no filter, so everything shows.
+  /// over with no pick, so the prompt shows until a chip is chosen.
   void _setSections(List<EntrySection> sections) {
     _sectionsByBlock = sections;
     _selectedSections = {};
@@ -112,24 +116,8 @@ class ScannerViewModel extends ChangeNotifier {
     _setSections(const []);
 
     final bytes = await file.readAsBytes();
-    // final document = PdfDocument(inputBytes: bytes);
-    // try {
-    //   final extractor = PdfTextExtractor(document);
-    //   final entries = _parser.parse(_toScheduleLines(extractor));
-    //   if (entries.isNotEmpty) {
-    //     _entries = entries;
-    //     final booked = [
-    //       for (final entry in entries)
-    //         if (!entry.isFree) entry,
-    //     ];
-    //     _setSections(_byBlock(booked));
-    //   }
-    //   return extractor.extractText();
-    // } finally {
-    //   document.dispose();
-    // }
     final result = await compute(_parsePdfInBackground, bytes);
-    
+
     _entries = result.entries;
     _setSections(result.sections);
 
@@ -232,11 +220,11 @@ _PdfScanResult _parsePdfInBackground(Uint8List bytes) {
     );
 
     final sections = entries.isEmpty
-      ? const <EntrySection>[]
-      : ScannerViewModel._byBlock([
-        for (final entry in entries)
-          if (!entry.isFree) entry
-      ]);
+        ? const <EntrySection>[]
+        : ScannerViewModel._byBlock([
+            for (final entry in entries)
+              if (!entry.isFree) entry,
+          ]);
 
     return _PdfScanResult(
       text: extractor.extractText(),
