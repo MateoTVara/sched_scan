@@ -2,11 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:sched_scan/schedule/models/schedule_entry.dart';
 
 /// One schedule slot rendered as a card: what is running in the room, who
-/// booked it, and between which hours.
+/// booked it, and between which hours. The room is not spelled out by
+/// default — the heading above the card covers it — unless [showRoom] asks
+/// for a line of its own.
 class EntryCard extends StatelessWidget {
-  const EntryCard({super.key, required this.entry});
+  const EntryCard({super.key, required this.entry, this.showRoom = false});
 
   final ScheduleEntry entry;
+
+  /// Whether to name the room on the card itself: on when a block's
+  /// sub-headings are start times instead of room names (the
+  /// `SortMode.timeThenRoom` sort), where the heading no longer says which
+  /// room the card belongs to.
+  final bool showRoom;
 
   @override
   Widget build(BuildContext context) {
@@ -22,6 +30,25 @@ class EntryCard extends StatelessWidget {
           spacing: 4,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (showRoom)
+              Row(
+                spacing: 4,
+                children: [
+                  Icon(
+                    Icons.meeting_room,
+                    size: 16,
+                    color: theme.colorScheme.outline,
+                  ),
+                  Expanded(
+                    child: Text(
+                      entry.room,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             if (title != null || entry.status != null)
               Row(
                 spacing: 8,

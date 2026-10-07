@@ -19,9 +19,19 @@ floats back in at any height going up. Nothing is selected to start with, so
 the list opens on a `Selecciona un bloque.` prompt and shows only the blocks
 (letter chip) or blockless rooms (name chip) you pick — dropping the last pick
 brings the prompt back, and a schedule with nothing booked says
-`Sin reservas: todas las aulas están libres.` instead. The whole UI is in
-Spanish, and the app opens in PDF mode — an image/PDF toggle sits in the
-AppBar for the day image input works.
+`Sin reservas: todas las aulas están libres.` instead.
+
+A `sort` button in the AppBar (it appears once something has been scanned)
+slides a menu in from the bottom over the dimmed screen. The menu lists the
+two criteria directly — *Por sala y hora* keeps each block's sub-headings as
+room names with the times inside them, *Por hora y sala* regroups a block by
+start time so its sub-headings become the times (`08:00`, `10:00`, …) and
+each card names its own room. The criterion in effect carries an arrow
+(`↑` ascending, `↓` descending): tapping it flips the direction, tapping the
+other one switches criterion with the direction as it is. Only the times
+move: blocks stay `A … K` and rooms keep their table order. The
+whole UI is in Spanish, and the app opens in PDF mode — an image/PDF toggle
+sits in the AppBar for the day image input works.
 
 ## Getting started
 
@@ -92,7 +102,7 @@ viewmodel + view — no Riverpod/Bloc/Provider:
 ```
 lib/
   main.dart    # app root; owns and disposes the viewmodels
-  scanner/     # scan dispatch (ML Kit or parser), card list, filter bar
+  scanner/     # scan dispatch (ML Kit or parser), card list, filter bar, sort menu
   schedule/    # picking, the pure-Dart PDF parser, models, opening prompt
 ```
 
@@ -111,6 +121,6 @@ flutter test
 
 Tests mirror `lib/` under `test/`: viewmodel unit tests (including a parser
 round-trip over `test/fixtures/sample.pdf`) and widget tests for the card
-list, the sticky headings, the filter bar, the two empty states, and the
-opening prompt. The image branch goes through ML Kit, which has no host
-implementation, so it isn't unit-tested.
+list, the sticky headings, the filter bar, the two empty states, the sort
+menu, and the opening prompt. The image branch goes through ML Kit, which has
+no host implementation, so it isn't unit-tested.

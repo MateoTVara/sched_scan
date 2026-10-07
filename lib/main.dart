@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sched_scan/scanner/scanner_view.dart';
 import 'package:sched_scan/scanner/scanner_viewmodel.dart';
+import 'package:sched_scan/scanner/sort_menu.dart';
 import 'package:sched_scan/schedule/schedule_view.dart';
 import 'package:sched_scan/schedule/schedule_viewmodel.dart';
 
@@ -57,6 +58,19 @@ class _MainAppState extends State<MainApp> {
           ),
           backgroundColor: Colors.deepPurple,
           actions: [
+            // The sort menu only orders what a scan has produced — and its
+            // choice dies with the next scan, like the chip filter — so the
+            // button follows the scan instead of always being there.
+            ListenableBuilder(
+              listenable: _scannerViewModel,
+              builder: (context, _) => _scannerViewModel.sectionsByBlock.isEmpty
+                  ? const SizedBox.shrink()
+                  : IconButton(
+                      onPressed: () => showSortMenu(context, _scannerViewModel),
+                      icon: const Icon(Icons.sort, color: Colors.white),
+                      tooltip: 'Ordenar',
+                    ),
+            ),
             IconButton(
               onPressed: _toggleMode,
               icon: const Icon(Icons.sync_alt, color: Colors.white),

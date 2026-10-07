@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sched_scan/scanner/entries_view.dart';
+import 'package:sched_scan/scanner/models/sort_mode.dart';
 import 'package:sched_scan/scanner/scanner_viewmodel.dart';
 
 class ScannerView extends StatelessWidget {
@@ -26,11 +27,13 @@ class ScannerView extends StatelessWidget {
             child: Center(child: CircularProgressIndicator()),
           ),
           // Something parsed, so show the cards — even when every slot in
-          // the document turned out to be free.
+          // the document turned out to be free. In time-first order a
+          // block's sub-headings are times, so each card names its room.
           (_, true, _) => EntriesView(
             sections: viewModel.visibleSectionsByBlock,
             hasBookings: viewModel.sectionsByBlock.isNotEmpty,
             filter: viewModel.sectionFilter,
+            showRoom: viewModel.sortMode == SortMode.timeThenRoom,
           ),
           (_, false, final String text) => SliverFillRemaining(
             hasScrollBody: false,

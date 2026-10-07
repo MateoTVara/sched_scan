@@ -34,11 +34,16 @@ const _bookedInLosa = ScheduleEntry(
 );
 
 /// One booked slot per course, distinct so a heading never matches a card.
-ScheduleEntry _slot(String room, String course) => ScheduleEntry(
+ScheduleEntry _slot(
+  String room,
+  String course, {
+  String start = '08:00',
+  String end = '10:00',
+}) => ScheduleEntry(
   room: room,
   pageIndex: 0,
-  start: '08:00',
-  end: '10:00',
+  start: start,
+  end: end,
   course: course,
 );
 
@@ -182,6 +187,85 @@ void main() {
     expect(find.text('MATEMÁTICA'), findsOneWidget);
     expect(find.text('ANA GARCÍA LÓPEZ'), findsOneWidget);
     expect(find.byType(EntryCard), findsNWidgets(3));
+    // Room mode needs no room line on the cards: the heading covers it.
+    expect(find.byIcon(Icons.meeting_room), findsNothing);
+  });
+
+  testWidgets('a block sorted by time shows start times where the room '
+      'names go', (tester) async {
+    final sections = [
+      EntrySection(
+        'Bloque A',
+        rooms: {
+          '08:00': [_slot('AULA A-101', 'A-1'), _slot('AULA A-102', 'B-1')],
+          '10:00': [
+            _slot('AULA A-101', 'A-2', start: '10:00', end: '12:00'),
+            _slot('AULA A-102', 'B-2', start: '10:00', end: '12:00'),
+          ],
+        },
+      ),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CustomScrollView(
+          slivers: [
+            EntriesView(
+              hasBookings: true,
+              sections: sections,
+              showRoom: true,
+              filter: SectionFilter(
+                sections: sections,
+                selected: const {'Bloque A'},
+                toggle: (_) {},
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // The block heading, with one sub-heading per start time under it…
+    expect(find.text('Bloque A'), findsOneWidget);
+    expect(find.text('08:00'), findsOneWidget);
+    expect(find.text('10:00'), findsOneWidget);
+    expect(find.byType(EntryCard), findsNWidgets(4));
+
+    // …so no room name is a heading any more, but every card names its own
+    // room instead.
+    expect(find.text('AULA A-101'), findsNWidgets(2));
+    expect(find.text('AULA A-102'), findsNWidgets(2));
+    expect(find.byIcon(Icons.meeting_room), findsNWidgets(4));
+
+    // The block still chips as its letter, not as one of the times.
+    final chip = find.byKey(const ValueKey('filter-Bloque A'));
+    expect(chip, findsOneWidget);
+    expect(find.descendant(of: chip, matching: find.text('A')), findsOneWidget);
+  });
+
+  testWidgets('a blockless room keeps its name in the heading only', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CustomScrollView(
+          slivers: [
+            EntriesView(
+              hasBookings: true,
+              showRoom: true,
+              sections: [
+                EntrySection('LOSA DEPORTIVA', entries: const [_bookedInLosa]),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // The heading *is* the room, so the card under it stays quiet even when
+    // the rest of the list is sorted by time.
+    expect(find.text('LOSA DEPORTIVA'), findsOneWidget);
+    expect(find.byIcon(Icons.meeting_room), findsNothing);
+    expect(find.byType(EntryCard), findsOneWidget);
   });
 
   testWidgets('says so when every room turned out to be free', (tester) async {

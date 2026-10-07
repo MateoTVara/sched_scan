@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sched_scan/scanner/models/sort_mode.dart';
 import 'package:sched_scan/scanner/scanner_viewmodel.dart';
 import 'package:sched_scan/schedule/models/entry_section.dart';
 import 'package:sched_scan/schedule/models/schedule_entry.dart';
@@ -28,6 +29,25 @@ ScannerViewModel _viewModel() => ScannerViewModel();
 /// Every card of a section list, block headings included.
 int _cardCount(List<EntrySection> sections) =>
     sections.fold<int>(0, (total, section) => total + section.entryCount);
+
+/// Whether a run of cards is in [order] by start time, with every entry
+/// that has no printed time last — whichever end the order starts from.
+bool _isSorted(List<ScheduleEntry> slots, SortOrder order) {
+  final sign = order == SortOrder.ascending ? 1 : -1;
+  String? previous;
+  var untimed = false;
+  for (final slot in slots) {
+    final start = slot.start;
+    if (start == null) {
+      untimed = true;
+      continue;
+    }
+    if (untimed) return false; // a timed entry after an untimed one
+    if (previous != null && sign * previous.compareTo(start) > 0) return false;
+    previous = start;
+  }
+  return true;
+}
 
 void main() {
   test('extracts the text layer from a pdf source', () async {
@@ -238,6 +258,191 @@ void main() {
     expect(viewModel.sectionFilter.selected, isEmpty);
     expect(viewModel.visibleSectionsByBlock, isEmpty);
     expect(viewModel.sectionsByBlock, isNotEmpty);
+  }, skip: _missing);
+
+  test(
+    'starts on the default sort: rooms first, earliest time first',
+    () async {
+      final viewModel = _viewModel();
+
+      expect(viewModel.sortMode, SortMode.roomThenTime);
+      expect(viewModel.sortOrder, SortOrder.ascending);
+
+      await viewModel.scan(SchedulePdf(_sample()));
+
+      expect(viewModel.sortMode, SortMode.roomThenTime);
+      expect(viewModel.sortOrder, SortOrder.ascending);
+      for (final section in viewModel.sectionsByBlock) {
+        for (final slots in [
+          section.entries,
+          for (final room in section.rooms.values) room,
+        ]) {
+          expect(
+            _isSorted(slots, SortOrder.ascending),
+            isTrue,
+            reason: '${section.title} is not earliest-first',
+          );
+        }
+      }
+    },
+    skip: _missing,
+  );
+
+  test('time-first sort groups a block under its start times', () async {
+    final viewModel = _viewModel();
+
+    await viewModel.scan(SchedulePdf(_sample()));
+    final roomsFirst = viewModel.sectionsByBlock;
+    final booked = [
+      for (final entry in viewModel.entries)
+        if (!entry.isFree) entry,
+    ];
+    // Where each room starts in the table, so the rooms inside a time group
+    // can be checked against it.
+    final firstSeen = <String, int>{};
+    for (var i = 0; i < booked.length; i++) {
+      firstSeen.putIfAbsent(booked[i].room, () => i);
+    }
+
+    viewModel.setSort(SortMode.timeThenRoom, SortOrder.ascending);
+
+    final sections = viewModel.sectionsByBlock;
+    // The same sections in the same order — only what is under each block
+    // heading changes.
+    expect(
+      [for (final section in sections) section.title],
+      [for (final section in roomsFirst) section.title],
+    );
+    // Nothing lost, nothing duplicated, nothing free.
+    expect(_cardCount(sections), booked.length);
+    for (final section in sections) {
+      expect(section.entryCount, greaterThan(0), reason: section.title);
+    }
+
+    for (final section in sections) {
+      if (section.rooms.isEmpty) {
+        // A blockless room has no sub-headings to turn into times — it just
+        // sorts by time like any other run.
+        expect(_isSorted(section.entries, SortOrder.ascending), isTrue);
+        continue;
+      }
+
+      final times = section.rooms.keys.toList();
+      expect(
+        times,
+        everyElement(matches(RegExp(r'^\d{1,2}:\d{2}$'))),
+        reason: '${section.title}: sub-headings must be start times',
+      );
+      expect(
+        times,
+        equals([...times]..sort()),
+        reason: '${section.title}: times must run earliest first',
+      );
+
+      for (final group in section.rooms.values) {
+        for (var i = 1; i < group.length; i++) {
+          expect(
+            firstSeen[group[i - 1].room],
+            lessThanOrEqualTo(firstSeen[group[i].room]!),
+            reason:
+                '${section.title}: rooms inside a time group lost the '
+                'table order',
+          );
+        }
+      }
+    }
+  }, skip: _missing);
+
+  test('descending reverses the times, not the blocks or the rooms', () async {
+    final viewModel = _viewModel();
+
+    await viewModel.scan(SchedulePdf(_sample()));
+    final titles = [
+      for (final section in viewModel.sectionsByBlock) section.title,
+    ];
+    final subHeadings = {
+      for (final section in viewModel.sectionsByBlock)
+        section.title: section.rooms.keys.toList(),
+    };
+
+    viewModel.setSort(SortMode.roomThenTime, SortOrder.descending);
+
+    final sections = viewModel.sectionsByBlock;
+    for (var i = 0; i < sections.length; i++) {
+      final section = sections[i];
+      // Blocks stay alphabetical and rooms keep the table's order…
+      expect(section.title, titles[i]);
+      expect(section.rooms.keys.toList(), subHeadings[section.title]);
+      // …only the cards run backwards, untimed ones still last.
+      for (final slots in [
+        section.entries,
+        for (final room in section.rooms.values) room,
+      ]) {
+        expect(
+          _isSorted(slots, SortOrder.descending),
+          isTrue,
+          reason: '${section.title} is not latest-first',
+        );
+      }
+    }
+
+    // In time-first mode the sub-headings themselves run backwards.
+    viewModel.setSort(SortMode.timeThenRoom, SortOrder.descending);
+
+    for (final section in viewModel.sectionsByBlock) {
+      final times = section.rooms.keys.toList();
+      for (var i = 1; i < times.length; i++) {
+        expect(
+          times[i - 1].compareTo(times[i]),
+          greaterThan(0),
+          reason: '${section.title}: times must run latest first',
+        );
+      }
+    }
+  }, skip: _missing);
+
+  test('the chip selection survives a sort change', () async {
+    final viewModel = _viewModel();
+
+    await viewModel.scan(SchedulePdf(_sample()));
+    final titles = [
+      for (final section in viewModel.sectionsByBlock) section.title,
+    ];
+
+    viewModel.toggleSection(titles.first);
+    expect(viewModel.visibleSectionsByBlock, hasLength(1));
+
+    viewModel.setSort(SortMode.timeThenRoom, SortOrder.descending);
+
+    // Both modes keep the same top-level titles, so the pick still points at
+    // the same section and the chips need no reshuffling.
+    expect(viewModel.sectionFilter.selected, {titles.first});
+    expect(
+      [for (final section in viewModel.visibleSectionsByBlock) section.title],
+      [titles.first],
+    );
+    expect([
+      for (final section in viewModel.sectionsByBlock) section.title,
+    ], titles);
+  }, skip: _missing);
+
+  test('a new scan resets the sort', () async {
+    final viewModel = _viewModel();
+
+    await viewModel.scan(SchedulePdf(_sample()));
+    viewModel.setSort(SortMode.timeThenRoom, SortOrder.descending);
+
+    await viewModel.scan(SchedulePdf(_sample()));
+
+    expect(viewModel.sortMode, SortMode.roomThenTime);
+    expect(viewModel.sortOrder, SortOrder.ascending);
+    // Back to room names under the blocks, not times.
+    expect(
+      viewModel.sectionsByBlock
+          .expand((section) => section.rooms.keys)
+          .any((key) => RegExp(r'^\d').hasMatch(key)),
+      isFalse,
+    );
   }, skip: _missing);
 
   test('scan is a no-op without a source', () async {

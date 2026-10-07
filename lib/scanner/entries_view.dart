@@ -10,8 +10,9 @@ import 'package:sliver_tools/sliver_tools.dart';
 /// its section is on screen and is pushed away when the section ends, so
 /// headings never pile up.
 ///
-/// A block section nests two levels — the `Bloque` heading spans every room
-/// below it, and each room's heading sticks beneath it while that room's
+/// A block section nests two levels — the `Bloque` heading spans every
+/// sub-heading below it (a room, or a start time when [showRoom] is on and
+/// the cards name their own room), and each sticks beneath it while its
 /// cards are current. A room with no block letter gets a single section with
 /// a heading of its own. Cards are already ordered by start time.
 ///
@@ -35,6 +36,7 @@ class EntriesView extends StatelessWidget {
     required this.sections,
     required this.hasBookings,
     this.filter,
+    this.showRoom = false,
   });
 
   /// The sections to show as cards — already narrowed to the filter.
@@ -49,6 +51,12 @@ class EntriesView extends StatelessWidget {
   /// The filter row over every section; when null no filter bar is drawn
   /// (an unfiltered list).
   final SectionFilter? filter;
+
+  /// Whether a card should name its own room — on when a block's
+  /// sub-headings are start times rather than room names, so the heading no
+  /// longer says which room a card is for. Only the two-level sections get
+  /// the line: a blockless room's heading *is* the room.
+  final bool showRoom;
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +78,8 @@ class EntriesView extends StatelessWidget {
             ),
           )
         else
-          for (final section in sections) _section(context, section),
+          for (final section in sections)
+            _section(context, section, showRoom: showRoom),
       ],
     );
   }
@@ -151,10 +160,15 @@ class EntriesView extends StatelessWidget {
   /// One section as a group whose pinned heading is contained to the
   /// section's own extent: `pushPinnedChildren` pushes it off towards the
   /// leading edge once the section has scrolled past.
-  static Widget _section(BuildContext context, EntrySection section) {
+  static Widget _section(
+    BuildContext context,
+    EntrySection section, {
+    required bool showRoom,
+  }) {
     if (section.rooms.isEmpty) {
       // A blockless room: its own heading over its cards, sticky over them
-      // only.
+      // only — and the heading is the room, so these cards never need to
+      // name it.
       return MultiSliver(
         pushPinnedChildren: true,
         children: [
@@ -164,34 +178,37 @@ class EntriesView extends StatelessWidget {
       );
     }
 
-    // A block: its heading spans every room beneath it, each room grouped in
-    // turn so its heading sticks under the block's while its cards are on
-    // screen.
+    // A block: its heading spans every group beneath it — a room per group,
+    // or a start time when [showRoom] is on — each grouped in turn so its
+    // heading sticks under the block's while its cards are on screen.
     return MultiSliver(
       pushPinnedChildren: true,
       children: [
         _header(context, section.title, level: 0),
-        for (final room in section.rooms.entries)
+        for (final group in section.rooms.entries)
           MultiSliver(
             pushPinnedChildren: true,
             children: [
-              _header(context, room.key, level: 1),
-              _cards(room.value),
+              _header(context, group.key, level: 1),
+              _cards(group.value, showRoom: showRoom),
             ],
           ),
       ],
     );
   }
 
-  static Widget _cards(List<ScheduleEntry> entries) => SliverList.builder(
-    itemCount: entries.length,
-    itemBuilder: (context, index) => EntryCard(entry: entries[index]),
-  );
+  static Widget _cards(List<ScheduleEntry> entries, {bool showRoom = false}) =>
+      SliverList.builder(
+        itemCount: entries.length,
+        itemBuilder: (context, index) =>
+            EntryCard(entry: entries[index], showRoom: showRoom),
+      );
 
   /// A pinned heading: level 0 sits loose and large (a block, or a lone room
-  /// with no block letter); the rooms a block groups sit tighter and smaller
-  /// underneath. The background keeps cards from showing through while the
-  /// heading is stuck to the top.
+  /// with no block letter); the groups a block nests — its rooms, or the
+  /// start times of a time-first sort — sit tighter and smaller underneath.
+  /// The background keeps cards from showing through while the heading is
+  /// stuck to the top.
   static Widget _header(
     BuildContext context,
     String text, {

@@ -20,7 +20,18 @@ inicio nada está seleccionado, así que la lista arranca con un aviso
 `Selecciona un bloque.` y solo muestra los bloques (chip con la letra) o las
 aulas sin bloque (chip con el nombre) que elijas — al deseleccionar el último
 vuelve el aviso, y un horario sin reservas muestra
-`Sin reservas: todas las aulas están libres.` Toda la interfaz está en
+`Sin reservas: todas las aulas están libres.`
+
+Un botón `sort` en la AppBar (aparece cuando ya hay algo escaneado) desliza
+un menú desde el borde inferior sobre la pantalla atenudida. El menú lista los
+dos criterios directamente — *Por sala y hora* mantiene los subtítulos de cada
+bloque como nombres de aula con las horas dentro, *Por hora y sala* reagrupa
+el bloque por hora de inicio para que sus subtítulos sean las horas
+(`08:00`, `10:00`, …) y cada tarjeta muestre su propia aula. El criterio en
+vigencia lleva una flecha (`↑` ascendente, `↓` descendente): tocarlo invierte
+la dirección, tocar el otro cambia de criterio con la dirección tal cual. Solo
+se mueven las horas: los bloques siguen en
+`A … K` y las aulas conservan su orden de tabla. Toda la interfaz está en
 español, y la app arranca en modo PDF — un conmutador imagen/PDF está en la
 AppBar para el día en que la imagen funcione.
 
@@ -95,7 +106,7 @@ vista (`ChangeNotifier`) — sin Riverpod/Bloc/Provider:
 ```
 lib/
   main.dart    # raíz de la app; crea y destruye los viewmodels
-  scanner/     # despacho del escaneo (ML Kit o parser), lista de tarjetas, filtro
+  scanner/     # despacho del escaneo (ML Kit o parser), lista de tarjetas, filtro, menú de orden
   schedule/    # selección de archivos, parser de PDF (Dart puro), modelos, prompt
 ```
 
@@ -115,6 +126,6 @@ flutter test
 Las pruebas reflejan `lib/` bajo `test/`: pruebas unitarias de los
 viewmodels (incluida una ida y vuelta del parser sobre
 `test/fixtures/sample.pdf`) y pruebas de widget para la lista de tarjetas,
-los encabezados fijos, la barra de filtros, los dos estados vacíos y el
-prompt inicial. La rama de imágenes pasa por ML Kit, que no tiene
-implementación en el host, así que no se prueba con unidad.
+los encabezados fijos, la barra de filtros, los dos estados vacíos, el menú
+de orden y el prompt inicial. La rama de imágenes pasa por ML Kit, que no
+tiene implementación en el host, así que no se prueba con unidad.

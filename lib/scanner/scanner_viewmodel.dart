@@ -1,10 +1,8 @@
-// import 'dart:typed_data';
-
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart';
-// import 'package:flutter/widgets.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:sched_scan/scanner/models/section_filter.dart';
+import 'package:sched_scan/scanner/models/sort_mode.dart';
 import 'package:sched_scan/schedule/models/entry_section.dart';
 import 'package:sched_scan/schedule/models/schedule_entry.dart';
 import 'package:sched_scan/schedule/models/schedule_line.dart';
@@ -28,12 +26,34 @@ class ScannerViewModel extends ChangeNotifier {
   List<ScheduleEntry> get entries => _entries;
 
   /// The booked slots grouped by block — `Bloque A` … `Bloque K`, alphabetical
-  /// and only the blocks that actually occur — each holding a section per room
-  /// in table order, cards sorted by start time. [ScheduleEntry.isFree] slots
-  /// are dropped, and so is any room left with nothing but free ones. Rooms
-  /// with no block letter keep their own single section after the blocks.
+  /// and only the blocks that actually occur — rebuilt from [entries] with the
+  /// current [sortMode] and [sortOrder] on every scan and every sort change.
+  /// [ScheduleEntry.isFree] slots are dropped, and so is any room left with
+  /// nothing but free ones. Rooms with no block letter keep their own single
+  /// section after the blocks.
   List<EntrySection> _sectionsByBlock = const [];
   List<EntrySection> get sectionsByBlock => _sectionsByBlock;
+
+  /// The primary key of the sort (see [SortMode]); the default, and what a
+  /// new scan resets to.
+  SortMode _sortMode = SortMode.timeThenRoom;
+  SortMode get sortMode => _sortMode;
+
+  /// Which end the time ordering starts from (see [SortOrder]); the default,
+  /// and what a new scan resets to.
+  SortOrder _sortOrder = SortOrder.ascending;
+  SortOrder get sortOrder => _sortOrder;
+
+  /// Switches the sort and rebuilds [sectionsByBlock] with it. The top-level
+  /// section titles never change between modes, so the filter row's selection
+  /// survives the switch untouched.
+  void setSort(SortMode mode, SortOrder order) {
+    if (mode == _sortMode && order == _sortOrder) return;
+    _sortMode = mode;
+    _sortOrder = order;
+    _sectionsByBlock = _buildSections();
+    notifyListeners();
+  }
 
   /// The titles of [_sectionsByBlock] picked in the filter row. Empty means
   /// nothing is picked: [visibleSectionsByBlock] then comes back empty and
@@ -69,12 +89,27 @@ class ScannerViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Replaces the sections and empties the selection: a new scan starts
-  /// over with no pick, so the prompt shows until a chip is chosen.
-  void _setSections(List<EntrySection> sections) {
-    _sectionsByBlock = sections;
+  /// Swaps in a fresh scan's entries and rebuilds the sections with them. A
+  /// new scan starts over: the filter row empties (so the prompt shows until
+  /// a chip is chosen) and the sort goes back to room-then-time, ascending.
+  void _applyEntries(List<ScheduleEntry> entries) {
+    _entries = entries;
     _selectedSections = {};
+    _sortMode = SortMode.roomThenTime;
+    _sortOrder = SortOrder.ascending;
+    _sectionsByBlock = _buildSections();
   }
+
+  /// The booked slots of [_entries], in table order, grouped the way the
+  /// current [sortMode]/[sortOrder] asks for.
+  List<EntrySection> _buildSections() => _byBlock(
+    [
+      for (final entry in _entries)
+        if (!entry.isFree) entry,
+    ],
+    mode: _sortMode,
+    order: _sortOrder,
+  );
 
   bool _isScanning = false;
   bool get isScanning => _isScanning;
@@ -103,8 +138,7 @@ class ScannerViewModel extends ChangeNotifier {
   }
 
   Future<String> _scanImage(XFile file) async {
-    _entries = const [];
-    _setSections(const []);
+    _applyEntries(const []);
 
     final input = InputImage.fromFilePath(file.path);
     final result = await _textRecognizer.processImage(input);
@@ -112,14 +146,15 @@ class ScannerViewModel extends ChangeNotifier {
   }
 
   Future<String> _scanPdf(XFile file) async {
-    _entries = const [];
-    _setSections(const []);
+    _applyEntries(const []);
 
     final bytes = await file.readAsBytes();
+    // The extraction and the parse are the expensive part, so they run off
+    // the UI thread; the grouping below is cheap and needs the viewmodel's
+    // current sort, so it happens here.
     final result = await compute(_parsePdfInBackground, bytes);
 
-    _entries = result.entries;
-    _setSections(result.sections);
+    _applyEntries(result.entries);
 
     return result.text;
   }
@@ -152,10 +187,20 @@ class ScannerViewModel extends ChangeNotifier {
 
   static String? _blockOf(String room) => _blockCode.firstMatch(room)?.group(1);
 
-  /// Blocks first, alphabetical and only the ones that occur, each holding its
-  /// rooms in table order; then the rooms with no block letter, each keeping
-  /// its own single heading.
-  static List<EntrySection> _byBlock(List<ScheduleEntry> booked) {
+  /// The sub-heading cards without a printed time group under — always the
+  /// last one of their block or room, whatever the direction.
+  static const String _noTimeHeading = 'Sin hora';
+
+  /// Blocks first, alphabetical and only the ones that occur; then the rooms
+  /// with no block letter, each keeping its own single heading. [mode] picks
+  /// what a block's sub-headings are (room names or start times) and [order]
+  /// which end the time ordering starts from — never the order of the blocks
+  /// themselves, nor of the rooms inside one.
+  static List<EntrySection> _byBlock(
+    List<ScheduleEntry> booked, {
+    required SortMode mode,
+    required SortOrder order,
+  }) {
     final blocks = <String, Map<String, List<ScheduleEntry>>>{};
     final loose = <String, List<ScheduleEntry>>{};
     for (final entry in booked) {
@@ -166,48 +211,83 @@ class ScannerViewModel extends ChangeNotifier {
         (blocks[block] ??= {}).putIfAbsent(entry.room, () => []).add(entry);
       }
     }
-    for (final rooms in blocks.values) {
-      for (final slots in rooms.values) {
-        _sortByStart(slots);
-      }
-    }
-    for (final slots in loose.values) {
-      _sortByStart(slots);
-    }
 
     final present = blocks.keys.toList()..sort();
     return [
       for (final block in present)
-        EntrySection('Bloque $block', rooms: blocks[block]!),
+        EntrySection(
+          'Bloque $block',
+          rooms: switch (mode) {
+            // One sub-heading per room, in table order.
+            SortMode.roomThenTime => {
+              for (final room in blocks[block]!.entries)
+                room.key: _sortedByStart(room.value, order),
+            },
+            // One sub-heading per start time, the rooms it covers still in
+            // table order inside the group.
+            SortMode.timeThenRoom => _groupByStart(blocks[block]!, order),
+          },
+        ),
       for (final room in loose.entries)
-        EntrySection(room.key, entries: room.value),
+        EntrySection(room.key, entries: _sortedByStart(room.value, order)),
     ];
   }
 
-  /// Puts one room's slots in start-time order, entries without a printed time
-  /// last. `HH:MM` compares correctly as a string.
-  static void _sortByStart(List<ScheduleEntry> slots) {
-    slots.sort((a, b) {
+  /// One run of cards in start-time order, entries without a printed time
+  /// last whatever [order] is — `HH:MM` compares correctly as a string.
+  static List<ScheduleEntry> _sortedByStart(
+    List<ScheduleEntry> slots,
+    SortOrder order,
+  ) {
+    final sign = order == SortOrder.ascending ? 1 : -1;
+    return [...slots]..sort((a, b) {
       final start = a.start;
       final otherStart = b.start;
       if (start == null && otherStart == null) return 0;
       if (start == null) return 1;
       if (otherStart == null) return -1;
-      return start.compareTo(otherStart);
+      return sign * start.compareTo(otherStart);
     });
+  }
+
+  /// A block's rooms regrouped by start time for [SortMode.timeThenRoom]:
+  /// every card starting at the same hour lands under one sub-heading, in
+  /// table order; the sub-headings themselves follow [order], and the cards
+  /// with no printed time stay last in both directions.
+  static Map<String, List<ScheduleEntry>> _groupByStart(
+    Map<String, List<ScheduleEntry>> rooms,
+    SortOrder order,
+  ) {
+    final groups = <String, List<ScheduleEntry>>{};
+    for (final slots in rooms.values) {
+      for (final entry in slots) {
+        (groups[entry.start ?? _noTimeHeading] ??= []).add(entry);
+      }
+    }
+
+    var times = [
+      for (final time in groups.keys)
+        if (time != _noTimeHeading) time,
+    ]..sort();
+    if (order == SortOrder.descending) {
+      times = times.reversed.toList();
+    }
+    if (groups.containsKey(_noTimeHeading)) {
+      times.add(_noTimeHeading);
+    }
+
+    return {for (final time in times) time: groups[time]!};
   }
 }
 
+/// What the isolate hands back: the raw text layer and every parsed entry,
+/// free slots included. The grouping into sections happens on the main
+/// isolate instead — it is cheap, and it depends on the current sort.
 class _PdfScanResult {
-  const _PdfScanResult({
-    required this.text,
-    required this.entries,
-    required this.sections,
-  });
+  const _PdfScanResult({required this.text, required this.entries});
 
   final String text;
   final List<ScheduleEntry> entries;
-  final List<EntrySection> sections;
 }
 
 _PdfScanResult _parsePdfInBackground(Uint8List bytes) {
@@ -219,18 +299,7 @@ _PdfScanResult _parsePdfInBackground(Uint8List bytes) {
       ScannerViewModel._toScheduleLines(extractor),
     );
 
-    final sections = entries.isEmpty
-        ? const <EntrySection>[]
-        : ScannerViewModel._byBlock([
-            for (final entry in entries)
-              if (!entry.isFree) entry,
-          ]);
-
-    return _PdfScanResult(
-      text: extractor.extractText(),
-      entries: entries,
-      sections: sections,
-    );
+    return _PdfScanResult(text: extractor.extractText(), entries: entries);
   } finally {
     document.dispose();
   }
