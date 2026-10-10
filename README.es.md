@@ -6,15 +6,17 @@ Lee un horario en pantalla en lugar de forzar la vista:
 
 - **PDF — la ruta soportada.** Su capa de texto se extrae y la *parsea
   geométricamente* en entradas estructuradas: cada hueco reservado se vuelve
-  una tarjeta, y los huecos libres (`LIBRE`) se descartan.
+  una tarjeta, y los huecos libres (`LIBRE`) no se vuelven tarjeta mientras
+  la fila *Libres* los excluye (su defecto).
 - **Imagen — todavía no usable.** OCR en el dispositivo (Google ML Kit); un
   escaneo de imagen solo muestra texto plano, y ML Kit solo viene para
   Android/iOS. Ver [Notas de plataforma y licencia](#notas-de-plataforma-y-licencia).
 
 Las tarjetas se agrupan por bloque (`Bloque A` … `Bloque K`) con encabezados
-fijos (sticky): el encabezado del bloque abarca sus aulas, el de cada aula se
-fija mientras sus tarjetas están a la vista, y los horarios de cada aula van
-ordenados por hora de inicio. Una barra flotante de chips filtra la lista: al
+fijos (sticky): el encabezado del bloque abarca sus subtítulos (las horas por
+defecto, los nombres de aula en *Por sala y hora*), cada subtítulo se fija
+mientras sus tarjetas están a la vista, y en orden por hora cada tarjeta
+muestra su propia aula. Una barra flotante de chips filtra la lista: al
 bajar se oculta con el contenido y al subir reaparece a cualquier altura. Al
 inicio nada está seleccionado, así que la lista arranca con un aviso
 `Selecciona un bloque.` y solo muestra los bloques (chip con la letra) o las
@@ -23,15 +25,33 @@ vuelve el aviso, y un horario sin reservas muestra
 `Sin reservas: todas las aulas están libres.`
 
 Un botón `sort` en la AppBar (aparece cuando ya hay algo escaneado) desliza
-un menú desde el borde inferior sobre la pantalla atenudida. El menú lista los
+un menú desde el borde inferior sobre la pantalla atenudida. Su encabezado
+alterna entre *Orden* y *Filtros*. *Orden* lista los
 dos criterios directamente — *Por sala y hora* mantiene los subtítulos de cada
-bloque como nombres de aula con las horas dentro, *Por hora y sala* reagrupa
+bloque como nombres de aula con las horas dentro, *Por hora y sala* (el
+defecto) reagrupa
 el bloque por hora de inicio para que sus subtítulos sean las horas
 (`08:00`, `10:00`, …) y cada tarjeta muestre su propia aula. El criterio en
 vigencia lleva una flecha (`↑` ascendente, `↓` descendente): tocarlo invierte
 la dirección, tocar el otro cambia de criterio con la dirección tal cual. Solo
 se mueven las horas: los bloques siguen en
-`A … K` y las aulas conservan su orden de tabla. Toda la interfaz está en
+`A … K` y las aulas conservan su orden de tabla.
+
+*Filtros* trae tres filas fijas, cada toque ciclando su fila entre nada → ✓
+incluida → ✕ excluida y de vuelta: *Laboratorio de Cómputo* (los laboratorios
+de cómputo del campus — todo el bloque B más C-203/204/303/304 y
+J-108/205/206/210–215, casados por el código del aula), *Libres* (los huecos
+libres solo se vuelven tarjeta con ✓ — excluida por defecto, así que los
+chips listan exactamente las aulas con reservas) y *Últimos 15 min* (una
+sesión empezada hace más de un cuarto de hora se oculta — a las 10:05 la
+tarjeta de 09:30 desaparece, la de 10:00 se queda; las horas posteriores no
+envejecen). Las filas se combinan con los chips de arriba — una selección
+vaciada por el filtro muestra `Ninguna aula coincide con el filtro.`. La app
+arranca con los defectos: reservas de laboratorios de cómputo frescas en
+orden por hora. El orden y las marcas vuelven a sus defectos con el
+siguiente escaneo.
+
+Toda la interfaz está en
 español, y la app arranca en modo PDF — un conmutador imagen/PDF está en la
 AppBar para el día en que la imagen funcione.
 
@@ -106,7 +126,7 @@ vista (`ChangeNotifier`) — sin Riverpod/Bloc/Provider:
 ```
 lib/
   main.dart    # raíz de la app; crea y destruye los viewmodels
-  scanner/     # despacho del escaneo (ML Kit o parser), lista de tarjetas, filtro, menú de orden
+  scanner/     # despacho del escaneo (ML Kit o parser), lista de tarjetas, filtros, menú de orden y las tres filas
   schedule/    # selección de archivos, parser de PDF (Dart puro), modelos, prompt
 ```
 
@@ -125,7 +145,10 @@ flutter test
 
 Las pruebas reflejan `lib/` bajo `test/`: pruebas unitarias de los
 viewmodels (incluida una ida y vuelta del parser sobre
-`test/fixtures/sample.pdf`) y pruebas de widget para la lista de tarjetas,
-los encabezados fijos, la barra de filtros, los dos estados vacíos, el menú
-de orden y el prompt inicial. La rama de imágenes pasa por ML Kit, que no
+`test/fixtures/sample.pdf`), pruebas puras del modelo de filtros (códigos de
+aula, la ventana de 15 minutos), y
+pruebas de widget para la lista de tarjetas,
+los encabezados fijos, la barra de filtros, los tres estados vacíos, el menú
+de orden con sus tres filas de filtro, y el prompt inicial. La rama de imágenes
+pasa por ML Kit, que no
 tiene implementación en el host, así que no se prueba con unidad.

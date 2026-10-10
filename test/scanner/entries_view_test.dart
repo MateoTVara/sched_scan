@@ -298,6 +298,24 @@ void main() {
     expect(find.textContaining('Sin reservas'), findsNothing);
   });
 
+  testWidgets('says so when the filter marks emptied the selection', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: CustomScrollView(
+          slivers: [
+            EntriesView(hasBookings: true, typeFiltered: true, sections: []),
+          ],
+        ),
+      ),
+    );
+
+    expect(find.text('Ninguna aula coincide con el filtro.'), findsOneWidget);
+    expect(find.text('Selecciona un bloque.'), findsNothing);
+    expect(find.textContaining('Sin reservas'), findsNothing);
+  });
+
   testWidgets('headings stick while their section is on screen and leave '
       'with it', (tester) async {
     final controller = ScrollController();

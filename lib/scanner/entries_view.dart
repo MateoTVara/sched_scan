@@ -19,17 +19,19 @@ import 'package:sliver_tools/sliver_tools.dart';
 /// With a [filter], a floating chip row comes first: one chip per section
 /// (a block's letter, a blockless room's full name) puts that section into
 /// the selection or takes it out. Nothing starts selected — an empty
-/// selection leaves the card list empty, so [hasBookings] decides which
-/// message stands in for it — and a selection narrows the list to its
-/// sections; deselecting the last one brings the message back. The row
-/// scrolls away with the content and floats back in over the cards — at
+/// selection leaves the card list empty — and a selection narrows the list
+/// to its sections; deselecting the last one brings the message back. The
+/// row scrolls away with the content and floats back in over the cards — at
 /// any height — when scrolling up; the pinned headings respect its paint
 /// extent as overlap, so they never cover it.
 ///
-/// Free (`LIBRE`) slots never reach this view — they are dropped when the
-/// entries are grouped — so an empty [sections] list means either that
-/// nothing is booked anywhere or that nothing is selected yet; the
-/// [hasBookings] flag is what tells the two apart.
+/// Free (`LIBRE`) slots reach this view only when the `Libres` row lets
+/// them in — out while it is excluded, its default — so an empty [sections]
+/// list has one of exactly
+/// three causes, and the flags name which: nothing is booked anywhere
+/// ([hasBookings] false → `Sin reservas…`), nothing is selected yet
+/// (`Selecciona un bloque.`), or the filter marks emptied the selection
+/// ([typeFiltered] → `Ninguna aula coincide con el filtro.`).
 class EntriesView extends StatelessWidget {
   const EntriesView({
     super.key,
@@ -37,15 +39,16 @@ class EntriesView extends StatelessWidget {
     required this.hasBookings,
     this.filter,
     this.showRoom = false,
+    this.typeFiltered = false,
   });
 
   /// The sections to show as cards — already narrowed to the filter.
   final List<EntrySection> sections;
 
-  /// Whether the *unfiltered* scan had any sections at all. Tells the two
-  /// empty states apart: with `hasBookings == false` nothing is booked
-  /// anywhere; with `hasBookings == true` the list is empty only because
-  /// no block is selected.
+  /// Whether the *unfiltered* scan had any sections at all. With
+  /// `hasBookings == false` nothing is booked anywhere — the free-schedule
+  /// message; otherwise an empty list is a selection problem, and
+  /// [typeFiltered] tells the two of those apart.
   final bool hasBookings;
 
   /// The filter row over every section; when null no filter bar is drawn
@@ -57,6 +60,12 @@ class EntriesView extends StatelessWidget {
   /// longer says which room a card is for. Only the two-level sections get
   /// the line: a blockless room's heading *is* the room.
   final bool showRoom;
+
+  /// Whether the filter marks are what emptied the list: a block is
+  /// selected, but every card in it was marked out. Only read when
+  /// [sections] is empty with [hasBookings] true — it names the third
+  /// empty state.
+  final bool typeFiltered;
 
   @override
   Widget build(BuildContext context) {
@@ -71,9 +80,11 @@ class EntriesView extends StatelessWidget {
             hasScrollBody: false,
             child: Center(
               child: Text(
-                hasBookings
-                    ? 'Selecciona un bloque.'
-                    : 'Sin reservas: todas las aulas están libres.',
+                !hasBookings
+                    ? 'Sin reservas: todas las aulas están libres.'
+                    : typeFiltered
+                    ? 'Ninguna aula coincide con el filtro.'
+                    : 'Selecciona un bloque.',
               ),
             ),
           )

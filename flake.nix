@@ -23,7 +23,6 @@
         let
           targets = [
             "linux"
-            "web"
           ];
           packages = lib.genAttrs targets (
             target:

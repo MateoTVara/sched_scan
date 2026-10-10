@@ -1,6 +1,7 @@
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:sched_scan/scanner/models/scan_filters.dart';
 import 'package:sched_scan/scanner/models/section_filter.dart';
 import 'package:sched_scan/scanner/models/sort_mode.dart';
 import 'package:sched_scan/schedule/models/entry_section.dart';
@@ -12,8 +13,15 @@ import 'package:sched_scan/schedule/schedule_parser.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 class ScannerViewModel extends ChangeNotifier {
+  /// [clock] reads the current time for the freshness row; tests inject
+  /// their own so the 15-minute window is not tied to the wall clock.
+  ScannerViewModel({DateTime Function()? clock})
+    : _clock = clock ?? DateTime.now;
+
   final _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
   // final _parser = ScheduleParser();
+
+  final DateTime Function() _clock;
 
   String? _recognizedText;
   String? get recognizedText => _recognizedText;
@@ -25,12 +33,13 @@ class ScannerViewModel extends ChangeNotifier {
   List<ScheduleEntry> _entries = const [];
   List<ScheduleEntry> get entries => _entries;
 
-  /// The booked slots grouped by block — `Bloque A` … `Bloque K`, alphabetical
-  /// and only the blocks that actually occur — rebuilt from [entries] with the
-  /// current [sortMode] and [sortOrder] on every scan and every sort change.
-  /// [ScheduleEntry.isFree] slots are dropped, and so is any room left with
-  /// nothing but free ones. Rooms with no block letter keep their own single
-  /// section after the blocks.
+  /// The scanned slots grouped by block — `Bloque A` … `Bloque K`,
+  /// alphabetical and only the blocks that actually occur — rebuilt from
+  /// [entries] with the current [sortMode] and [sortOrder] on every scan
+  /// and every sort change, and with the `Libres` mark on every change to
+  /// it: free slots are out by default, and so is any room left with
+  /// nothing but free ones. Rooms with no block letter keep their own
+  /// single section after the blocks.
   List<EntrySection> _sectionsByBlock = const [];
   List<EntrySection> get sectionsByBlock => _sectionsByBlock;
 
@@ -71,13 +80,66 @@ class ScannerViewModel extends ChangeNotifier {
 
   /// What the card list renders: no section while nothing is selected — the
   /// view then shows its "Selecciona un bloque" prompt — and the selected
-  /// ones once a chip has been picked.
-  List<EntrySection> get visibleSectionsByBlock => _selectedSections.isEmpty
-      ? const []
-      : [
-          for (final section in _sectionsByBlock)
-            if (_selectedSections.contains(section.title)) section,
-        ];
+  /// ones once a chip has been picked, each stripped of the cards the
+  /// filter marks keep out. A room (or a whole section) left without a card
+  /// goes with them.
+  List<EntrySection> get visibleSectionsByBlock {
+    if (_selectedSections.isEmpty) return const [];
+    final visible = <EntrySection>[];
+    // No mark set: the selection renders as it stands, sections included.
+    if (_marks.isEmpty) {
+      for (final section in _sectionsByBlock) {
+        if (_selectedSections.contains(section.title)) visible.add(section);
+      }
+      return visible;
+    }
+    final now = _clock();
+    for (final section in _sectionsByBlock) {
+      if (!_selectedSections.contains(section.title)) continue;
+      final filtered = _passesFilters(section, now);
+      if (filtered != null) visible.add(filtered);
+    }
+    return visible;
+  }
+
+  /// [section] without the cards the marks keep out, or null when nothing
+  /// survived — only reached while at least one row is marked, never for
+  /// the untouched list above. Per entry, not per sub-heading: in time
+  /// order the keys of `rooms` are start times, and a time group can hold
+  /// several room kinds.
+  EntrySection? _passesFilters(EntrySection section, DateTime now) {
+    if (section.rooms.isEmpty) {
+      final entries = [
+        for (final slot in section.entries)
+          if (_passes(slot, now)) slot,
+      ];
+      if (entries.isEmpty) return null;
+      return EntrySection(section.title, entries: entries);
+    }
+    final rooms = <String, List<ScheduleEntry>>{};
+    for (final group in section.rooms.entries) {
+      final slots = [
+        for (final slot in group.value)
+          if (_passes(slot, now)) slot,
+      ];
+      if (slots.isNotEmpty) rooms[group.key] = slots;
+    }
+    if (rooms.isEmpty) return null;
+    return EntrySection(section.title, rooms: rooms);
+  }
+
+  /// One card against all three rows: a compute lab that is not free and
+  /// not stale, as far as each row's own mark asks for.
+  bool _passes(ScheduleEntry slot, DateTime now) =>
+      passesMark(
+        _marks[FilterRow.computeLab] ?? TypeMark.none,
+        isComputeLab(slot.room),
+      ) &&
+      passesMark(_marks[FilterRow.libres] ?? TypeMark.none, slot.isFree) &&
+      passesMark(
+        _marks[FilterRow.last15] ?? TypeMark.none,
+        !isStale(slot.start, now),
+      );
 
   /// Adds [title] to the selection or takes it out again — deselecting the
   /// last one empties the selection, which brings the prompt back in place
@@ -89,23 +151,64 @@ class ScannerViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The mark on each of the three filter rows — [defaultFilterMarks]
+  /// after every scan: like the selection and the sort, the filters are
+  /// per scan.
+  final Map<FilterRow, TypeMark> _marks = Map.of(defaultFilterMarks);
+
+  /// The `Filtros` tab: the three rows, the mark on each, and [cycleFilter]
+  /// to advance one.
+  ScanFilters get filters =>
+      ScanFilters(marks: Map.unmodifiable(_marks), cycle: cycleFilter);
+
+  /// Advances one row: none → include → exclude → none. A row back at
+  /// [TypeMark.none] drops out of the marks entirely. The `Libres` row
+  /// also decides which entries exist as cards at all, so it rebuilds
+  /// [sectionsByBlock] — the chips follow it, the other rows only narrow
+  /// what they show.
+  void cycleFilter(FilterRow row) {
+    final next = (_marks[row] ?? TypeMark.none).next;
+    if (next == TypeMark.none) {
+      _marks.remove(row);
+    } else {
+      _marks[row] = next;
+    }
+    if (row == FilterRow.libres) {
+      _sectionsByBlock = _buildSections();
+    }
+    notifyListeners();
+  }
+
+  /// Whether the filters are what emptied the card list: a block is
+  /// selected, but every card in the selection was marked out — a compute
+  /// lab include over a lab-less block, the freshness window over a stale
+  /// one. The view then says so instead of asking for another block.
+  bool get typeFilteredOut =>
+      _selectedSections.isNotEmpty && visibleSectionsByBlock.isEmpty;
+
   /// Swaps in a fresh scan's entries and rebuilds the sections with them. A
   /// new scan starts over: the filter row empties (so the prompt shows until
-  /// a chip is chosen) and the sort goes back to room-then-time, ascending.
+  /// a chip is chosen), the marks go back to [defaultFilterMarks], and the
+  /// sort goes back to time-then-room, ascending.
   void _applyEntries(List<ScheduleEntry> entries) {
     _entries = entries;
     _selectedSections = {};
-    _sortMode = SortMode.roomThenTime;
+    _marks
+      ..clear()
+      ..addAll(defaultFilterMarks);
+    _sortMode = SortMode.timeThenRoom;
     _sortOrder = SortOrder.ascending;
     _sectionsByBlock = _buildSections();
   }
 
-  /// The booked slots of [_entries], in table order, grouped the way the
-  /// current [sortMode]/[sortOrder] asks for.
+  /// The entries of [_entries] the `Libres` mark keeps — booked slots by
+  /// default — in table order, grouped the way the current
+  /// [sortMode]/[sortOrder] asks for.
   List<EntrySection> _buildSections() => _byBlock(
     [
       for (final entry in _entries)
-        if (!entry.isFree) entry,
+        if (passesMark(_marks[FilterRow.libres] ?? TypeMark.none, entry.isFree))
+          entry,
     ],
     mode: _sortMode,
     order: _sortOrder,
@@ -197,13 +300,13 @@ class ScannerViewModel extends ChangeNotifier {
   /// which end the time ordering starts from — never the order of the blocks
   /// themselves, nor of the rooms inside one.
   static List<EntrySection> _byBlock(
-    List<ScheduleEntry> booked, {
+    List<ScheduleEntry> slots, {
     required SortMode mode,
     required SortOrder order,
   }) {
     final blocks = <String, Map<String, List<ScheduleEntry>>>{};
     final loose = <String, List<ScheduleEntry>>{};
-    for (final entry in booked) {
+    for (final entry in slots) {
       final block = _blockOf(entry.room);
       if (block == null) {
         loose.putIfAbsent(entry.room, () => []).add(entry);

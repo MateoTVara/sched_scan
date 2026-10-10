@@ -6,14 +6,16 @@ Read a schedule on screen instead of squinting at it:
 
 - **PDF — the supported path.** The text layer is extracted and
   *geometrically parsed* into structured entries: every booked slot becomes a
-  card, and free (`LIBRE`) slots are dropped.
+  card, and free (`LIBRE`) slots get none while the *Libres* filter excludes
+  them (its default).
 - **Image — not usable yet.** On-device OCR (Google ML Kit); an image scan
   only ever shows raw text, and ML Kit ships Android/iOS implementations
   only. See [Platform & license notes](#platform--license-notes).
 
 The cards are grouped by block (`Bloque A` … `Bloque K`) with sticky
-headings — a block heading spans its rooms, each room's heading sticks while
-its cards are current — and every room's slots are sorted by start time. A
+headings — a block heading spans its sub-headings (the start times by
+default, the room names under *Por sala y hora*), each sticks while its cards
+are current, and in time order every card names its own room. A
 floating filter bar of chips narrows the list: it scrolls away going down and
 floats back in at any height going up. Nothing is selected to start with, so
 the list opens on a `Selecciona un bloque.` prompt and shows only the blocks
@@ -22,16 +24,32 @@ brings the prompt back, and a schedule with nothing booked says
 `Sin reservas: todas las aulas están libres.` instead.
 
 A `sort` button in the AppBar (it appears once something has been scanned)
-slides a menu in from the bottom over the dimmed screen. The menu lists the
+slides a menu in from the bottom over the dimmed screen. Its header tabs
+between *Orden* and *Filtros*. *Orden* lists the
 two criteria directly — *Por sala y hora* keeps each block's sub-headings as
-room names with the times inside them, *Por hora y sala* regroups a block by
+room names with the times inside them, *Por hora y sala* (the default)
+regroups a block by
 start time so its sub-headings become the times (`08:00`, `10:00`, …) and
 each card names its own room. The criterion in effect carries an arrow
 (`↑` ascending, `↓` descending): tapping it flips the direction, tapping the
 other one switches criterion with the direction as it is. Only the times
-move: blocks stay `A … K` and rooms keep their table order. The
-whole UI is in Spanish, and the app opens in PDF mode — an image/PDF toggle
-sits in the AppBar for the day image input works.
+move: blocks stay `A … K` and rooms keep their table order.
+
+*Filtros* carries three fixed rows, each tap cycling that row through
+nothing → ✓ included → ✕ excluded and back: *Laboratorio de Cómputo* (the
+campus's computing labs — every block-B room plus C-203/204/303/304 and
+J-108/205/206/210–215, matched on the room code), *Libres* (free slots
+become cards only while it is ✓ — excluded by default, so the chips list
+exactly the booked rooms), and *Últimos 15 min* (a session started more than
+a quarter of an hour ago is hidden — at 10:05 the 09:30 card is gone, the
+10:00 one stays; later starts never age). The rows compose with the chips
+above — a selection the filter empties says
+`Ninguna aula coincide con el filtro.`. The app opens on the defaults: fresh
+compute-lab bookings in time order. Sort and marks both go back to their
+defaults with the next scan.
+
+The whole UI is in Spanish, and the app opens in PDF mode — an image/PDF
+toggle sits in the AppBar for the day image input works.
 
 ## Getting started
 
@@ -102,7 +120,7 @@ viewmodel + view — no Riverpod/Bloc/Provider:
 ```
 lib/
   main.dart    # app root; owns and disposes the viewmodels
-  scanner/     # scan dispatch (ML Kit or parser), card list, filter bar, sort menu
+  scanner/     # scan dispatch (ML Kit or parser), card list, filter bar, sort menu + filter rows
   schedule/    # picking, the pure-Dart PDF parser, models, opening prompt
 ```
 
@@ -120,7 +138,9 @@ flutter test
 ```
 
 Tests mirror `lib/` under `test/`: viewmodel unit tests (including a parser
-round-trip over `test/fixtures/sample.pdf`) and widget tests for the card
-list, the sticky headings, the filter bar, the two empty states, the sort
-menu, and the opening prompt. The image branch goes through ML Kit, which has
+round-trip over `test/fixtures/sample.pdf`), pure tests for the filter model
+(room codes, the 15-minute window), and widget tests for the card
+list, the sticky headings, the filter bar, the three empty states, the sort
+menu and its three filter rows, and the opening prompt. The image branch goes
+through ML Kit, which has
 no host implementation, so it isn't unit-tested.

@@ -34,6 +34,7 @@ class ScannerView extends StatelessWidget {
             hasBookings: viewModel.sectionsByBlock.isNotEmpty,
             filter: viewModel.sectionFilter,
             showRoom: viewModel.sortMode == SortMode.timeThenRoom,
+            typeFiltered: viewModel.typeFilteredOut,
           ),
           (_, false, final String text) => SliverFillRemaining(
             hasScrollBody: false,
