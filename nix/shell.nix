@@ -46,7 +46,7 @@ let
   androidSdk = androidComposition.androidsdk;
 in
 mkShell {
-  inputsFrom = [ mainPkg ];
+  inputsFrom = [ mainPkg.multiShell ];
 
   packages =
     let
