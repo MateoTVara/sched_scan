@@ -125,7 +125,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Orden opens first — where the `Ordenar` button points — so the
-    // three filter rows wait on their own tab.
+    // four filter rows wait on their own tab.
     expect(find.text('Por sala y hora'), findsOneWidget);
     expect(find.text('Por hora y sala'), findsOneWidget);
     expect(
@@ -134,8 +134,8 @@ void main() {
     );
 
     // Over on Filtros: the fixed rows, each in its default state — labs
-    // and window ticked, Libres crossed — and no sign of the criteria's
-    // rows: one body at a time.
+    // and window ticked, Libres crossed, the now row untouched — and no
+    // sign of the criteria's rows: one body at a time.
     await tester.tap(find.text('Filtros'));
     await tester.pumpAndSettle();
 
@@ -153,6 +153,7 @@ void main() {
     final labs = find.byKey(ValueKey('filter-computeLab'));
     final free = find.byKey(ValueKey('filter-libres'));
     final window = find.byKey(ValueKey('filter-last15'));
+    final now = find.byKey(ValueKey('filter-now'));
     expect(
       find.descendant(of: labs, matching: find.byIcon(Icons.check)),
       findsOneWidget,
@@ -164,6 +165,15 @@ void main() {
     expect(
       find.descendant(of: window, matching: find.byIcon(Icons.check)),
       findsOneWidget,
+    );
+    // The now row is opt-in: it starts untouched, with no icon at all.
+    expect(
+      find.descendant(of: now, matching: find.byIcon(Icons.check)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: now, matching: find.byIcon(Icons.close)),
+      findsNothing,
     );
 
     // One tap on the labs row walks it include → exclude: the tick turns
@@ -236,5 +246,108 @@ void main() {
     expect(find.byType(BottomSheet), findsOneWidget);
     expect(find.text('Filtros'), findsOneWidget);
     expect(viewModel.filters.marks, defaultFilterMarks);
+
+    // The now row walks its own cycle from none — tick, cross, clean —
+    // with the sheet open through all of it, and ends where it started.
+    await tester.tap(now);
+    await tester.pump();
+
+    expect(viewModel.filters.stateOf(FilterRow.now), TypeMark.include);
+    expect(
+      find.descendant(of: now, matching: find.byIcon(Icons.check)),
+      findsOneWidget,
+    );
+
+    await tester.tap(now);
+    await tester.pump();
+
+    expect(viewModel.filters.stateOf(FilterRow.now), TypeMark.exclude);
+    expect(
+      find.descendant(of: now, matching: find.byIcon(Icons.close)),
+      findsOneWidget,
+    );
+
+    await tester.tap(now);
+    await tester.pump();
+
+    expect(viewModel.filters.stateOf(FilterRow.now), TypeMark.none);
+    expect(viewModel.filters.marks, defaultFilterMarks);
+    expect(find.byType(BottomSheet), findsOneWidget);
+  });
+
+  testWidgets('restores the sort and the marks from either tab', (
+    tester,
+  ) async {
+    final viewModel = _viewModel();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: ElevatedButton(
+                onPressed: () => showSortMenu(context, viewModel),
+                child: const Text('Abrir'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Abrir'));
+    await tester.pumpAndSettle();
+
+    // Scattered from the defaults on both tabs: the criterion in effect
+    // flipped to descending…
+    await tester.tap(_row(SortMode.timeThenRoom));
+    await tester.pump();
+    expect(viewModel.sortOrder, SortOrder.descending);
+
+    // …and a filter row marked out.
+    await tester.tap(find.text('Filtros'));
+    await tester.pumpAndSettle();
+    final labs = find.byKey(ValueKey('filter-computeLab'));
+    await tester.tap(labs);
+    await tester.pump();
+    expect(viewModel.filters.stateOf(FilterRow.computeLab), TypeMark.exclude);
+
+    // The restore button sits under the header, on offer whichever tab
+    // is open.
+    final restore = find.byKey(ValueKey('restore-defaults'));
+    expect(restore, findsOneWidget);
+
+    await tester.tap(restore);
+    await tester.pump();
+
+    // One tap gives both groups back, the sheet still up to show it —
+    // the crossed row ticked again, the marks the defaults.
+    expect(viewModel.sortMode, SortMode.timeThenRoom);
+    expect(viewModel.sortOrder, SortOrder.ascending);
+    expect(viewModel.filters.marks, defaultFilterMarks);
+    expect(
+      find.descendant(of: labs, matching: find.byIcon(Icons.close)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: labs, matching: find.byIcon(Icons.check)),
+      findsOneWidget,
+    );
+    expect(find.byType(BottomSheet), findsOneWidget);
+
+    // Over on Orden the restored criterion is the one in effect again,
+    // arrowed upwards — and the button came along to the other tab.
+    await tester.tap(find.text('Orden'));
+    await tester.pumpAndSettle();
+
+    expect(restore, findsOneWidget);
+    expect(
+      find.descendant(
+        of: _row(SortMode.timeThenRoom),
+        matching: find.byIcon(Icons.arrow_upward),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.arrow_downward), findsNothing);
   });
 }

@@ -17,7 +17,7 @@ enum TypeMark {
   };
 }
 
-/// The three fixed rows of the menu's `Filtros` tab — the same on every
+/// The four fixed rows of the menu's `Filtros` tab — the same on every
 /// scan, unlike the sections they filter.
 enum FilterRow {
   /// The computing labs of campus, as [isComputeLab] knows them.
@@ -29,7 +29,12 @@ enum FilterRow {
   /// The freshness window: sessions started more than [freshnessWindow]
   /// ago are stale, and stale sessions are hidden while this row is marked
   /// in.
-  last15('Últimos 15 min');
+  last15('Últimos 15 min'),
+
+  /// The session running right now: only cards whose printed range covers
+  /// the clock — [isOngoing] — survive while this row is marked in, so a
+  /// room with nothing underway drops out of the list.
+  now('Ahora');
 
   const FilterRow(this.label);
 
@@ -38,7 +43,8 @@ enum FilterRow {
 }
 
 /// What every scan starts from: the compute labs in, the free slots out,
-/// the stale sessions out.
+/// the stale sessions out, the now row untouched — it is opt-in, a tap
+/// away from the full schedule.
 const Map<FilterRow, TypeMark> defaultFilterMarks = {
   FilterRow.computeLab: TypeMark.include,
   FilterRow.libres: TypeMark.exclude,
@@ -87,6 +93,26 @@ bool isStale(String? start, DateTime now) {
   final minutes = _minutesOf(start);
   if (minutes == null) return false;
   return now.hour * 60 + now.minute - minutes > freshnessWindow.inMinutes;
+}
+
+/// Whether a session is underway at [now]: its printed range covers the
+/// clock — it started at or before [now] and, when an end was printed,
+/// has not closed yet. Both ends count, so a session is current through
+/// its closing minute, like the freshness row's inclusive boundary. A
+/// slot with no printed end is open-ended and runs from its start on; no
+/// printed start means nothing to run from, so its card never shows as
+/// current — and neither does one still to come.
+bool isOngoing(String? start, String? end, DateTime now) {
+  final began = _minutesOf(start);
+  if (began == null) return false;
+  final closes = _minutesOf(end);
+  // A range that closes before it opens runs over midnight: a clock read
+  // before its start is then the next day's, so shift it a day to compare.
+  final wraps = closes != null && closes < began;
+  var minutes = now.hour * 60 + now.minute;
+  if (wraps && minutes < began) minutes += 24 * 60;
+  if (minutes < began) return false;
+  return closes == null || minutes <= (wraps ? closes + 24 * 60 : closes);
 }
 
 int? _minutesOf(String? time) {

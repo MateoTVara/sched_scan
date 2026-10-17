@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sched_scan/scanner/models/scan_filters.dart';
 import 'package:sched_scan/scanner/models/sort_mode.dart';
 import 'package:sched_scan/scanner/scanner_viewmodel.dart';
+import 'package:sched_scan/scanner/settings_store.dart';
 import 'package:sched_scan/schedule/models/entry_section.dart';
 import 'package:sched_scan/schedule/models/schedule_entry.dart';
 import 'package:sched_scan/schedule/models/schedule_source.dart';
@@ -74,6 +75,23 @@ void _noFilters(ScannerViewModel viewModel) {
     _markNone(viewModel, row);
   }
 }
+
+/// An in-memory [SettingsStore]: what the viewmodel writes, [read] hands
+/// straight back — no platform behind it.
+class _FakeSettings implements SettingsStore {
+  ScanSettings? stored;
+
+  @override
+  ScanSettings? read() => stored;
+
+  @override
+  Future<void> write(ScanSettings settings) async => stored = settings;
+}
+
+/// A viewmodel over the [FakeSettings] above, on the same midnight clock
+/// as [_viewModel].
+ScannerViewModel _storedViewModel(_FakeSettings settings) =>
+    ScannerViewModel(clock: () => DateTime(2026, 1, 1), settings: settings);
 
 void main() {
   test('extracts the text layer from a pdf source', () async {
@@ -462,7 +480,7 @@ void main() {
     ], titles);
   }, skip: _missing);
 
-  test('a new scan resets the sort', () async {
+  test('a new scan keeps the sort', () async {
     final viewModel = _viewModel();
 
     await viewModel.scan(SchedulePdf(_sample()));
@@ -470,14 +488,16 @@ void main() {
 
     await viewModel.scan(SchedulePdf(_sample()));
 
-    expect(viewModel.sortMode, SortMode.timeThenRoom);
-    expect(viewModel.sortOrder, SortOrder.ascending);
-    // Back to the default grouping: start times under the blocks.
+    // The choice outlives the scan — persisted now, reset only by hand —
+    // and the grouping follows it: in room mode a block's sub-headings
+    // are rooms, not start times.
+    expect(viewModel.sortMode, SortMode.roomThenTime);
+    expect(viewModel.sortOrder, SortOrder.descending);
     expect(
       viewModel.sectionsByBlock
           .expand((section) => section.rooms.keys)
           .any((key) => RegExp(r'^\d').hasMatch(key)),
-      isTrue,
+      isFalse,
     );
   }, skip: _missing);
 
@@ -683,6 +703,87 @@ void main() {
       );
     }, skip: _missing);
 
+    test('the now row keeps only the session underway', () async {
+      final now = DateTime(2026, 1, 1, 10, 5);
+      final viewModel = ScannerViewModel(clock: () => now);
+
+      await viewModel.scan(SchedulePdf(_sample()));
+      // Only the now row acts here — every booked room is on the list; the
+      // labs and the window are walked off, the free slots stay out.
+      _markNone(viewModel, FilterRow.computeLab);
+      _markNone(viewModel, FilterRow.last15);
+      selectAll(viewModel);
+
+      final booked = _cards(viewModel.sectionsByBlock).toList();
+      final underway = [
+        for (final card in booked)
+          if (isOngoing(card.start, card.end, now)) card,
+      ];
+      final rest = [
+        for (final card in booked)
+          if (!isOngoing(card.start, card.end, now)) card,
+      ];
+      // The sample runs sessions across the clock's hour.
+      expect(underway, isNotEmpty);
+      expect(rest, isNotEmpty);
+
+      // Marked in: only the cards whose printed range covers 10:05 stay —
+      // a room with nothing underway drops out with them.
+      viewModel.cycleFilter(FilterRow.now); // none → include
+
+      final shown = _cards(viewModel.visibleSectionsByBlock).toList();
+      expect(shown.length, underway.length);
+      expect([
+        for (final card in shown) isOngoing(card.start, card.end, now),
+      ], everyElement(true));
+
+      // Marked out — the other half: everything but the running sessions.
+      viewModel.cycleFilter(FilterRow.now); // include → exclude
+
+      final behind = _cards(viewModel.visibleSectionsByBlock).toList();
+      expect(behind.length, rest.length);
+      expect([
+        for (final card in behind) isOngoing(card.start, card.end, now),
+      ], everyElement(false));
+
+      // Back to none: the row stops filtering at all.
+      viewModel.cycleFilter(FilterRow.now); // exclude → none
+
+      expect(
+        _cards(viewModel.visibleSectionsByBlock),
+        hasLength(booked.length),
+      );
+    }, skip: _missing);
+
+    test('the now row can empty a selection and say why', () async {
+      final now = DateTime(2026, 1, 1, 10, 5);
+      final viewModel = ScannerViewModel(clock: () => now);
+
+      await viewModel.scan(SchedulePdf(_sample()));
+      // Only the now row acts here: the labs and the window are walked
+      // off, the free slots stay at their default exclude — with free
+      // slots in, every room would hold something underway.
+      _markNone(viewModel, FilterRow.computeLab);
+      _markNone(viewModel, FilterRow.last15);
+
+      // A section whose cards have all been over for a while — the
+      // sample's early morning, asked for rather than assumed.
+      final section = viewModel.sectionsByBlock.firstWhere(
+        (section) =>
+            _cards([section]).isNotEmpty &&
+            _cards([section])
+                .every((card) => !isOngoing(card.start, card.end, now)),
+      );
+      viewModel.toggleSection(section.title);
+      expect(viewModel.visibleSectionsByBlock, isNotEmpty);
+
+      viewModel.cycleFilter(FilterRow.now); // none → include
+
+      // A block *is* selected, so the view says why there is nothing.
+      expect(viewModel.visibleSectionsByBlock, isEmpty);
+      expect(viewModel.typeFilteredOut, isTrue);
+    }, skip: _missing);
+
     test('the marks narrow inside the chip selection', () async {
       final viewModel = _viewModel();
       await viewModel.scan(SchedulePdf(_sample()));
@@ -739,17 +840,134 @@ void main() {
       );
     }, skip: _missing);
 
-    test('a new scan resets the marks', () async {
+    test('a new scan keeps the marks and clears the selection', () async {
       final viewModel = await allSelected();
       _noFilters(viewModel);
       expect(viewModel.filters.marks, isNot(defaultFilterMarks));
       expect(viewModel.filters.stateOf(FilterRow.libres), TypeMark.none);
+      expect(viewModel.hasSelection, isTrue);
 
       await viewModel.scan(SchedulePdf(_sample()));
 
-      expect(viewModel.filters.marks, defaultFilterMarks);
+      // The marks outlive the scan now — only the selection starts over,
+      // so the prompt shows until a chip is chosen.
+      expect(viewModel.filters.marks, isNot(defaultFilterMarks));
+      expect(viewModel.filters.stateOf(FilterRow.libres), TypeMark.none);
       expect(viewModel.typeFilteredOut, isFalse);
       expect(viewModel.visibleSectionsByBlock, isEmpty); // chips went too
+      expect(viewModel.hasSelection, isFalse);
+    }, skip: _missing);
+  });
+
+  group('persistence and restore', () {
+    test('a fresh viewmodel starts from the stored choice', () async {
+      final settings = _FakeSettings()
+        ..stored = const ScanSettings(
+          sortMode: SortMode.roomThenTime,
+          sortOrder: SortOrder.descending,
+          marks: {FilterRow.last15: TypeMark.exclude},
+        );
+      final viewModel = _storedViewModel(settings);
+
+      await viewModel.scan(SchedulePdf(_sample()));
+
+      // The stored snapshot is the whole state: sort, direction and marks
+      // — rows it does not mention are none, not the defaults.
+      expect(viewModel.sortMode, SortMode.roomThenTime);
+      expect(viewModel.sortOrder, SortOrder.descending);
+      expect(viewModel.filters.marks, {FilterRow.last15: TypeMark.exclude});
+      // And the grouping follows the stored sort.
+      expect(
+        viewModel.sectionsByBlock
+            .expand((section) => section.rooms.keys)
+            .any((key) => RegExp(r'^\d').hasMatch(key)),
+        isFalse,
+      );
+    }, skip: _missing);
+
+    test('every choice is written back as it is made', () async {
+      final settings = _FakeSettings();
+      final viewModel = _storedViewModel(settings);
+
+      await viewModel.scan(SchedulePdf(_sample()));
+      viewModel.setSort(SortMode.roomThenTime, SortOrder.descending);
+
+      expect(settings.stored!.sortMode, SortMode.roomThenTime);
+      expect(settings.stored!.sortOrder, SortOrder.descending);
+
+      viewModel.cycleFilter(FilterRow.computeLab); // include → exclude
+
+      expect(settings.stored!.marks[FilterRow.computeLab], TypeMark.exclude);
+      // The untouched rows come along as they stand — the defaults from
+      // the scan before the first change.
+      expect(settings.stored!.marks[FilterRow.libres], TypeMark.exclude);
+      expect(settings.stored!.marks[FilterRow.last15], TypeMark.include);
+    }, skip: _missing);
+
+    test(
+      'restoreDefaults gives back the defaults and keeps the chips',
+      () async {
+        final settings = _FakeSettings();
+        final viewModel = _storedViewModel(settings);
+
+        await viewModel.scan(SchedulePdf(_sample()));
+        viewModel.setSort(SortMode.roomThenTime, SortOrder.descending);
+        viewModel.cycleFilter(FilterRow.libres); // exclude → none
+        // A section with a compute lab in it — it has to outlive the
+        // restored lab include for the chips to still show something.
+        final section = viewModel.sectionsByBlock
+            .firstWhere(
+              (section) =>
+                  _cards([section]).any((card) => isComputeLab(card.room)),
+            )
+            .title;
+        viewModel.toggleSection(section);
+        expect(viewModel.hasSelection, isTrue);
+        // With `Libres` marked in, free slots are cards.
+        expect([
+          for (final card in _cards(viewModel.sectionsByBlock)) card.isFree,
+        ], contains(true));
+
+        viewModel.restoreDefaults();
+
+        expect(viewModel.sortMode, SortMode.timeThenRoom);
+        expect(viewModel.sortOrder, SortOrder.ascending);
+        expect(viewModel.filters.marks, defaultFilterMarks);
+        // The sections were rebuilt with them — `Libres` excluded again,
+        // so the free slots are no cards.
+        expect([
+          for (final card in _cards(viewModel.sectionsByBlock)) card.isFree,
+        ], everyElement(false));
+        // The reset was written back…
+        expect(settings.stored!.sortMode, SortMode.timeThenRoom);
+        expect(settings.stored!.sortOrder, SortOrder.ascending);
+        expect(settings.stored!.marks, defaultFilterMarks);
+        // …while the chips were left alone: the pick still points at its
+        // section, so the cards show again under the defaults.
+        expect(viewModel.sectionFilter.selected, {section});
+        expect(viewModel.hasSelection, isTrue);
+        expect(viewModel.visibleSectionsByBlock, hasLength(1));
+      },
+      skip: _missing,
+    );
+
+    test('clearSelection empties the chips in one go', () async {
+      final viewModel = _viewModel();
+
+      await viewModel.scan(SchedulePdf(_sample()));
+      for (final section in viewModel.sectionsByBlock) {
+        viewModel.toggleSection(section.title);
+      }
+      expect(viewModel.hasSelection, isTrue);
+      expect(viewModel.visibleSectionsByBlock, isNotEmpty);
+
+      viewModel.clearSelection();
+
+      // The prompt's way back — deselecting every pick one by one, in one
+      // step — with the sections themselves untouched.
+      expect(viewModel.hasSelection, isFalse);
+      expect(viewModel.visibleSectionsByBlock, isEmpty);
+      expect(viewModel.sectionsByBlock, isNotEmpty);
     }, skip: _missing);
   });
 

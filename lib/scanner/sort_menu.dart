@@ -23,12 +23,14 @@ Future<void> showSortMenu(BuildContext context, ScannerViewModel viewModel) {
 }
 
 /// The menu: a [TabBar] header over one body at a time — the [SortMode]
-/// rows under `Orden`, the three [FilterRow]s under `Filtros` — reading
+/// rows under `Orden`, the four [FilterRow]s under `Filtros` — reading
 /// the current choice from [viewModel] and writing it back through
 /// [ScannerViewModel.setSort] and [ScannerViewModel.cycleFilter], so the
-/// choices never live here. The tab index is the only state the widget
-/// keeps: transient UI state, `Orden` first because that is what the
-/// `Ordenar` button means.
+/// choices never live here. Under the header, on offer for both tabs, the
+/// restore button gives both groups back to their defaults
+/// ([ScannerViewModel.restoreDefaults]). The tab index is the only state
+/// the widget keeps: transient UI state, `Orden` first because that is
+/// what the `Ordenar` button means.
 class SortMenu extends StatefulWidget {
   const SortMenu({super.key, required this.viewModel});
 
@@ -174,6 +176,19 @@ class _SortMenuState extends State<SortMenu>
                     Tab(text: 'Orden'),
                     Tab(text: 'Filtros'),
                   ],
+                ),
+                // One button for both groups — sort and marks back to
+                // their defaults — sitting above the tab body, so it is
+                // on offer whichever tab is open. The sheet stays up, so
+                // the effect is right there to compare.
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    key: const ValueKey('restore-defaults'),
+                    onPressed: widget.viewModel.restoreDefaults,
+                    icon: const Icon(Icons.restart_alt),
+                    label: const Text('Restaurar valores predeterminados'),
+                  ),
                 ),
                 Flexible(
                   child: AnimatedBuilder(

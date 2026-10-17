@@ -4,6 +4,7 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:sched_scan/scanner/models/scan_filters.dart';
 import 'package:sched_scan/scanner/models/section_filter.dart';
 import 'package:sched_scan/scanner/models/sort_mode.dart';
+import 'package:sched_scan/scanner/settings_store.dart';
 import 'package:sched_scan/schedule/models/entry_section.dart';
 import 'package:sched_scan/schedule/models/schedule_entry.dart';
 import 'package:sched_scan/schedule/models/schedule_line.dart';
@@ -13,15 +14,38 @@ import 'package:sched_scan/schedule/schedule_parser.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 class ScannerViewModel extends ChangeNotifier {
-  /// [clock] reads the current time for the freshness row; tests inject
-  /// their own so the 15-minute window is not tied to the wall clock.
-  ScannerViewModel({DateTime Function()? clock})
-    : _clock = clock ?? DateTime.now;
+  /// [clock] reads the current time for the freshness row and [settings]
+  /// hands back the persisted sort and marks once, synchronously, at
+  /// construction — so the app opens already wearing the last choice;
+  /// tests inject their own so neither the window nor the storage is tied
+  /// to the wall clock or the platform.
+  factory ScannerViewModel({
+    DateTime Function()? clock,
+    SettingsStore? settings,
+  }) {
+    // Read once, up front: the fields have to see the same snapshot.
+    final stored = settings?.read();
+    return ScannerViewModel._(clock: clock, store: settings, stored: stored);
+  }
+
+  ScannerViewModel._({
+    DateTime Function()? clock,
+    SettingsStore? store,
+    ScanSettings? stored,
+  }) : _clock = clock ?? DateTime.now,
+       _settings = store,
+       _sortMode = stored?.sortMode ?? SortMode.timeThenRoom,
+       _sortOrder = stored?.sortOrder ?? SortOrder.ascending,
+       _marks = Map.of(stored?.marks ?? defaultFilterMarks);
 
   final _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
   // final _parser = ScheduleParser();
 
   final DateTime Function() _clock;
+
+  /// Where the sort and the marks are written back on every change; none
+  /// in tests that do not care, and nothing is stored then.
+  final SettingsStore? _settings;
 
   String? _recognizedText;
   String? get recognizedText => _recognizedText;
@@ -43,25 +67,58 @@ class ScannerViewModel extends ChangeNotifier {
   List<EntrySection> _sectionsByBlock = const [];
   List<EntrySection> get sectionsByBlock => _sectionsByBlock;
 
-  /// The primary key of the sort (see [SortMode]); the default, and what a
-  /// new scan resets to.
-  SortMode _sortMode = SortMode.timeThenRoom;
+  /// The primary key of the sort (see [SortMode]) — the persisted choice,
+  /// [SortMode.timeThenRoom] on a fresh install and after
+  /// [restoreDefaults].
+  SortMode _sortMode;
   SortMode get sortMode => _sortMode;
 
-  /// Which end the time ordering starts from (see [SortOrder]); the default,
-  /// and what a new scan resets to.
-  SortOrder _sortOrder = SortOrder.ascending;
+  /// Which end the time ordering starts from (see [SortOrder]) — the
+  /// persisted choice, [SortOrder.ascending] on a fresh install and after
+  /// [restoreDefaults].
+  SortOrder _sortOrder;
   SortOrder get sortOrder => _sortOrder;
 
   /// Switches the sort and rebuilds [sectionsByBlock] with it. The top-level
   /// section titles never change between modes, so the filter row's selection
-  /// survives the switch untouched.
+  /// survives the switch untouched — and the choice is written back (see
+  /// [restoreDefaults] to give it up).
   void setSort(SortMode mode, SortOrder order) {
     if (mode == _sortMode && order == _sortOrder) return;
     _sortMode = mode;
     _sortOrder = order;
     _sectionsByBlock = _buildSections();
+    _persist();
     notifyListeners();
+  }
+
+  /// Sort and marks back to their defaults — time-then-room, ascending,
+  /// [defaultFilterMarks] — the sections rebuilt with them (the `Libres`
+  /// mark decides which slots are cards at all) and the choice written
+  /// back. The chip selection is left alone: [clearSelection] is the way
+  /// to empty that.
+  void restoreDefaults() {
+    _sortMode = SortMode.timeThenRoom;
+    _sortOrder = SortOrder.ascending;
+    _marks = Map.of(defaultFilterMarks);
+    _sectionsByBlock = _buildSections();
+    _persist();
+    notifyListeners();
+  }
+
+  /// Writes the current sort and marks back, if anywhere — the chips'
+  /// selection is per scan and never stored. Fire and forget: the write
+  /// is a platform-side map update, nothing the UI waits on.
+  void _persist() {
+    final settings = _settings;
+    if (settings == null) return;
+    settings.write(
+      ScanSettings(
+        sortMode: _sortMode,
+        sortOrder: _sortOrder,
+        marks: Map.of(_marks),
+      ),
+    );
   }
 
   /// The titles of [_sectionsByBlock] picked in the filter row. Empty means
@@ -128,8 +185,9 @@ class ScannerViewModel extends ChangeNotifier {
     return EntrySection(section.title, rooms: rooms);
   }
 
-  /// One card against all three rows: a compute lab that is not free and
-  /// not stale, as far as each row's own mark asks for.
+  /// One card against all four rows: a compute lab that is not free, not
+  /// stale and, while the `Ahora` row asks for it, underway right now —
+  /// as far as each row's own mark asks for.
   bool _passes(ScheduleEntry slot, DateTime now) =>
       passesMark(
         _marks[FilterRow.computeLab] ?? TypeMark.none,
@@ -139,6 +197,10 @@ class ScannerViewModel extends ChangeNotifier {
       passesMark(
         _marks[FilterRow.last15] ?? TypeMark.none,
         !isStale(slot.start, now),
+      ) &&
+      passesMark(
+        _marks[FilterRow.now] ?? TypeMark.none,
+        isOngoing(slot.start, slot.end, now),
       );
 
   /// Adds [title] to the selection or takes it out again — deselecting the
@@ -151,13 +213,23 @@ class ScannerViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The mark on each of the three filter rows — [defaultFilterMarks]
-  /// after every scan: like the selection and the sort, the filters are
-  /// per scan.
-  final Map<FilterRow, TypeMark> _marks = Map.of(defaultFilterMarks);
+  /// Whether any chip is picked — the app bar's clear button follows it.
+  bool get hasSelection => _selectedSections.isNotEmpty;
 
-  /// The `Filtros` tab: the three rows, the mark on each, and [cycleFilter]
-  /// to advance one.
+  /// Empties the chip selection in one go — every card goes back behind
+  /// the "Selecciona un bloque." prompt, the same as deselecting the picks
+  /// one by one.
+  void clearSelection() {
+    _selectedSections.clear();
+    notifyListeners();
+  }
+
+  /// The mark on each of the four filter rows — the persisted choice,
+  /// [defaultFilterMarks] on a fresh install and after [restoreDefaults].
+  Map<FilterRow, TypeMark> _marks;
+
+  /// The `Filtros` tab: the four rows, the mark on each, and
+  /// [cycleFilter] to advance one.
   ScanFilters get filters =>
       ScanFilters(marks: Map.unmodifiable(_marks), cycle: cycleFilter);
 
@@ -165,7 +237,7 @@ class ScannerViewModel extends ChangeNotifier {
   /// [TypeMark.none] drops out of the marks entirely. The `Libres` row
   /// also decides which entries exist as cards at all, so it rebuilds
   /// [sectionsByBlock] — the chips follow it, the other rows only narrow
-  /// what they show.
+  /// what they show. Every step is written back (see [restoreDefaults]).
   void cycleFilter(FilterRow row) {
     final next = (_marks[row] ?? TypeMark.none).next;
     if (next == TypeMark.none) {
@@ -176,28 +248,26 @@ class ScannerViewModel extends ChangeNotifier {
     if (row == FilterRow.libres) {
       _sectionsByBlock = _buildSections();
     }
+    _persist();
     notifyListeners();
   }
 
   /// Whether the filters are what emptied the card list: a block is
   /// selected, but every card in the selection was marked out — a compute
   /// lab include over a lab-less block, the freshness window over a stale
-  /// one. The view then says so instead of asking for another block.
+  /// one, the `Ahora` row over a session that is not running. The view
+  /// then says so instead of asking for another block.
   bool get typeFilteredOut =>
       _selectedSections.isNotEmpty && visibleSectionsByBlock.isEmpty;
 
-  /// Swaps in a fresh scan's entries and rebuilds the sections with them. A
-  /// new scan starts over: the filter row empties (so the prompt shows until
-  /// a chip is chosen), the marks go back to [defaultFilterMarks], and the
-  /// sort goes back to time-then-room, ascending.
+  /// Swaps in a fresh scan's entries and rebuilds the sections with them,
+  /// in the sort and under the marks as they stand — those are persisted
+  /// now (see [_persist]) and outlive the scan. What a new scan *does*
+  /// start over is the filter row: the selection empties, so the prompt
+  /// shows until a chip is chosen.
   void _applyEntries(List<ScheduleEntry> entries) {
     _entries = entries;
     _selectedSections = {};
-    _marks
-      ..clear()
-      ..addAll(defaultFilterMarks);
-    _sortMode = SortMode.timeThenRoom;
-    _sortOrder = SortOrder.ascending;
     _sectionsByBlock = _buildSections();
   }
 

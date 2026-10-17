@@ -25,8 +25,10 @@ void main() {
     });
     expect(
       [for (final row in FilterRow.values) row.label],
-      ['Laboratorio de Cómputo', 'Libres', 'Últimos 15 min'],
+      ['Laboratorio de Cómputo', 'Libres', 'Últimos 15 min', 'Ahora'],
     );
+    // The now row is opt-in: untouched means absent from the marks.
+    expect(defaultFilterMarks[FilterRow.now], isNull);
   });
 
   group('isComputeLab', () {
@@ -81,6 +83,45 @@ void main() {
       expect(isStale(null, now), isFalse);
       expect(isStale('—', now), isFalse);
       expect(isStale('Recuperación', now), isFalse);
+    });
+  });
+
+  group('isOngoing', () {
+    final now = DateTime(2026, 1, 1, 10, 5);
+
+    test('a printed range covers the clock from its start to its end', () {
+      expect(isOngoing('09:30', '11:30', now), isTrue); // mid-session
+      expect(isOngoing('10:05', '12:00', now), isTrue); // just started
+      expect(isOngoing('08:00', '10:05', now), isTrue); // through the end
+      expect(isOngoing('10:06', '12:00', now), isFalse); // yet to come
+      expect(isOngoing('08:00', '10:04', now), isFalse); // already over
+    });
+
+    test('with no printed end the session runs from its start on', () {
+      expect(isOngoing('09:30', null, now), isTrue);
+      expect(isOngoing('10:05', null, now), isTrue);
+      expect(isOngoing('10:06', null, now), isFalse);
+      // An unparseable end is no end either.
+      expect(isOngoing('09:30', '—', now), isTrue);
+    });
+
+    test('no start time, or no parseable one, is never underway', () {
+      expect(isOngoing(null, '12:00', now), isFalse);
+      expect(isOngoing(null, null, now), isFalse);
+      expect(isOngoing('—', '12:00', now), isFalse);
+      expect(isOngoing('Recuperación', null, now), isFalse);
+    });
+
+    test('a range closing before it opens runs over midnight', () {
+      final late = DateTime(2026, 1, 1, 23);
+      final small = DateTime(2026, 1, 1, 5);
+      final morning = DateTime(2026, 1, 1, 7);
+      final evening = DateTime(2026, 1, 1, 21);
+
+      expect(isOngoing('22:00', '06:00', late), isTrue);
+      expect(isOngoing('22:00', '06:00', small), isTrue); // past midnight
+      expect(isOngoing('22:00', '06:00', morning), isFalse); // closed
+      expect(isOngoing('22:00', '06:00', evening), isFalse); // not yet
     });
   });
 }

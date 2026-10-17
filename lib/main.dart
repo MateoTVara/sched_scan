@@ -1,18 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:sched_scan/scanner/scanner_view.dart';
 import 'package:sched_scan/scanner/scanner_viewmodel.dart';
+import 'package:sched_scan/scanner/settings_store.dart';
 import 'package:sched_scan/scanner/sort_menu.dart';
 import 'package:sched_scan/schedule/schedule_view.dart';
 import 'package:sched_scan/schedule/schedule_viewmodel.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum InputMode { image, pdf }
 
-void main() {
-  runApp(const MainApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // The platform side has to be up before the first frame: the scanner
+  // viewmodel reads the persisted sort and marks synchronously, at its
+  // construction below.
+  final prefs = await SharedPreferences.getInstance();
+  runApp(MainApp(settings: SharedPrefsSettingsStore(prefs)));
 }
 
 class MainApp extends StatefulWidget {
-  const MainApp({super.key});
+  const MainApp({super.key, this.settings});
+
+  /// Where the scanner viewmodel keeps its sort and filter marks between
+  /// scans and restarts; without one nothing is stored or restored.
+  final SettingsStore? settings;
 
   @override
   State<MainApp> createState() => _MainAppState();
@@ -20,7 +31,7 @@ class MainApp extends StatefulWidget {
 
 class _MainAppState extends State<MainApp> {
   final _scheduleViewModel = ScheduleViewModel();
-  final _scannerViewModel = ScannerViewModel();
+  late final _scannerViewModel = ScannerViewModel(settings: widget.settings);
 
   InputMode _mode = InputMode.pdf;
 
@@ -58,9 +69,22 @@ class _MainAppState extends State<MainApp> {
           ),
           backgroundColor: Colors.deepPurple,
           actions: [
-            // The sort menu only orders what a scan has produced — and its
-            // choice dies with the next scan, like the chip filter — so the
-            // button follows the scan instead of always being there.
+            // The chips belong to the scan on screen, so the way to drop
+            // them all at once only makes sense while some are picked.
+            ListenableBuilder(
+              listenable: _scannerViewModel,
+              builder: (context, _) => _scannerViewModel.hasSelection
+                  ? IconButton(
+                      onPressed: _scannerViewModel.clearSelection,
+                      icon: const Icon(Icons.clear_all, color: Colors.white),
+                      tooltip: 'Limpiar selección',
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            // The sort menu only orders what a scan has produced — its
+            // choice is persisted now (see `SettingsStore`), so it outlives
+            // both the scan and the app, but there is still nothing to
+            // order before one, and the button follows the scan.
             ListenableBuilder(
               listenable: _scannerViewModel,
               builder: (context, _) => _scannerViewModel.sectionsByBlock.isEmpty
