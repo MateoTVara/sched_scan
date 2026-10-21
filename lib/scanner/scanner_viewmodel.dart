@@ -338,8 +338,12 @@ class ScannerViewModel extends ChangeNotifier {
         ScheduleLine(
           pageIndex: line.pageIndex,
           words: [
+            // Whitespace fragments stay in: the newer PDFs emit text
+            // character by character, and the parser stitches the fragments
+            // back into words using the whitespace as its separator
+            // (`ScheduleParser.stitchGap`).
             for (final word in line.wordCollection)
-              if (word.text.trim().isNotEmpty)
+              if (word.text.isNotEmpty)
                 ScheduleWord(
                   text: word.text.trim(),
                   left: word.bounds.left,

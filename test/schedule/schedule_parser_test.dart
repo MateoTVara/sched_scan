@@ -24,7 +24,11 @@ const _boundary = 80.0;
 const _col1 = 200.0;
 const _col2 = 400.0;
 
-const _samplePath = 'test/fixtures/sample.pdf';
+const _samplePath = 'test/fixtures/sample_01.pdf';
+
+/// The fixture in the October 2026 format: the text layer there is emitted
+/// one character per word, which is what the stitching step exists for.
+const _newSamplePath = 'test/fixtures/sample_02.pdf';
 
 ScheduleLine _header(int page) => ScheduleLine(
   pageIndex: page,
@@ -37,7 +41,9 @@ ScheduleLine _header(int page) => ScheduleLine(
       right: 120,
       bottom: 18,
     ),
-    ScheduleWord(text: '08:00', left: 120, top: 10, right: 160, bottom: 18),
+    // Real anchors are never closer than 0.75pt — above the parser's
+    // stitchGap, so the two words stay apart.
+    ScheduleWord(text: '08:00', left: 125, top: 10, right: 165, bottom: 18),
   ],
 );
 
@@ -85,6 +91,63 @@ ScheduleLine _edge(int page, double top, String text) => ScheduleLine(
     ),
   ],
 );
+
+/// One line spelled the way the October 2026 PDFs emit text: every token its
+/// own run of per-character fragments 4pt wide, `' '` standing for the
+/// whitespace fragment the extractor prints between two words.
+ScheduleLine _spelled(int page, double top, double left, List<String> tokens) {
+  var x = left;
+  final words = <ScheduleWord>[];
+  for (final token in tokens) {
+    if (token == ' ') {
+      words.add(
+        ScheduleWord(
+          text: ' ',
+          left: x,
+          top: top,
+          right: x + 4,
+          bottom: top + _height,
+        ),
+      );
+      x += 4;
+      continue;
+    }
+    for (var i = 0; i < token.length; i++) {
+      words.add(
+        ScheduleWord(
+          text: token[i],
+          left: x + i * 4.0,
+          top: top,
+          right: x + (i + 1) * 4.0,
+          bottom: top + _height,
+        ),
+      );
+    }
+    x += token.length * 4.0;
+  }
+  return ScheduleLine(pageIndex: page, words: words);
+}
+
+/// A PDF's text layer as the parser sees it: whitespace fragments kept, the
+/// way `ScannerViewModel._toScheduleLines` hands the lines over — the parser
+/// stitches the fragments back into whole words itself.
+List<ScheduleLine> _scheduleLines(PdfTextExtractor extractor) => [
+  for (final line in extractor.extractTextLines())
+    ScheduleLine(
+      pageIndex: line.pageIndex,
+      words: [
+        for (final word in line.wordCollection)
+          if (word.text.isNotEmpty)
+            ScheduleWord(
+              text: word.text.trim(),
+              left: word.bounds.left,
+              top: word.bounds.top,
+              right: word.bounds.right,
+              bottom: word.bounds.bottom,
+            ),
+      ],
+    ),
+];
 
 void main() {
   group('ScheduleParser', () {
@@ -321,8 +384,10 @@ void main() {
         _cell(0, 703, _col1, 'De: 07:00 a 11:00'),
         _header(1),
         _label(1, 50, 'MICROBIOLOGÍA)'),
-        _cell(1, 50, _col1, 'LIBRE'),
-        _cell(1, 53, _col1, 'De: 12:00 a 14:00'),
+        // The row is cut too: the tail continues with a later time column,
+        // whose cells had not started on the previous page.
+        _cell(1, 50, _col2, 'LIBRE'),
+        _cell(1, 53, _col2, 'De: 12:00 a 14:00'),
         _label(1, 100, 'AULA C-101'),
         _cell(1, 100, _col1, 'FÍSICA SEC: 1'),
         _cell(1, 103, _col1, 'De: 15:00 a 17:00'),
@@ -375,6 +440,172 @@ void main() {
       expect(next.person, isNull);
       expect(next.start, '11:00');
     });
+
+    test('stitches the per-character text layer back into words', () {
+      // The October 2026 PDFs emit one fragment per character, with the
+      // whitespace fragments between words — the header line below reads
+      // `AULA / HORA 07:00 08:00` once stitched, `07:00` split as `07:` + `00`.
+      final entries = ScheduleParser().parse([
+        _spelled(0, 10, 5, [
+          'AULA',
+          ' ',
+          '/',
+          ' ',
+          'HORA',
+          ' ',
+          '07:',
+          '00',
+          ' ',
+          '08:',
+          '00',
+        ]),
+        _spelled(0, 100, _labelX, ['AULA', ' ', 'A-107']),
+        _spelled(0, 100, 190, ['LIBRE']),
+        _spelled(0, 103, 166, [
+          'De:',
+          ' ',
+          '07:',
+          '00',
+          ' ',
+          'a',
+          ' ',
+          '11:',
+          '00',
+        ]),
+      ]);
+
+      expect(entries, hasLength(1));
+      final entry = entries.single;
+      expect(entry.room, 'AULA A-107');
+      expect(entry.status, 'LIBRE');
+      expect(entry.start, '07:00');
+      expect(entry.end, '11:00');
+    });
+
+    test('leaves real words apart at the closest measured gap', () {
+      // Fragments of one word abut (≤ 0.25pt) while the closest two real
+      // words ever print is 0.75pt — just above stitchGap, so `07:00` and
+      // `08:00` below stay two anchors (had they merged, no word would
+      // match the anchor pattern, the page would have no boundary and the
+      // parse would come back empty).
+      final entries = ScheduleParser().parse([
+        ScheduleLine(
+          pageIndex: 0,
+          words: [
+            ..._spelled(0, 10, 5, [
+              'AULA',
+              ' ',
+              '/',
+              ' ',
+              'HORA',
+              ' ',
+              '07:',
+              '00',
+            ]).words,
+            ScheduleWord(
+              text: '08:00',
+              left: 73.75,
+              top: 10,
+              right: 113.75,
+              bottom: 18,
+            ),
+          ],
+        ),
+        _label(0, 100, 'AULA A-108'),
+        _cell(0, 100, _col1, 'LIBRE'),
+        _cell(0, 103, _col1, 'De: 08:00 a 10:15'),
+      ]);
+
+      expect(entries, hasLength(1));
+      expect(entries.single.start, '08:00');
+      expect(entries.single.end, '10:15');
+    });
+
+    test('reads a time range whose end wrapped bare onto the next line', () {
+      // A narrow cell wraps as `De: 10:15 a` + `11:00` in the newer PDFs —
+      // the `a` stays behind and the end lands alone on the next line.
+      final entries = ScheduleParser().parse([
+        _header(0),
+        _label(0, 100, 'AULA A-109'),
+        _cell(0, 100, _col1, 'LIBRE'),
+        _cell(0, 103, _col1, 'De: 10:15 a'),
+        _cell(0, 106, _col1, '11:00'),
+      ]);
+
+      expect(entries, hasLength(1));
+      expect(entries.single.start, '10:15');
+      expect(entries.single.end, '11:00');
+    });
+
+    test('splits two cells that share one baseline', () {
+      // A page-break continuation row prints both columns' time ranges as a
+      // single text line; each run of it is its own cell.
+      final entries = ScheduleParser().parse([
+        _header(0),
+        _label(0, 100, 'AULA E-101'),
+        _cell(0, 100, _col1, 'FÍSICA SEC: 1'),
+        _cell(0, 100, _col2, 'QUÍMICA SEC: 2'),
+        ScheduleLine(
+          pageIndex: 0,
+          words: [
+            ScheduleWord(
+              text: 'De: 08:00 a 10:15',
+              left: _col1 - 30,
+              top: 103,
+              right: _col1 + 30,
+              bottom: 111,
+            ),
+            ScheduleWord(
+              text: 'De: 10:15 a 12:30',
+              left: _col2 - 30,
+              top: 103,
+              right: _col2 + 30,
+              bottom: 111,
+            ),
+          ],
+        ),
+      ]);
+
+      expect(entries, hasLength(2));
+      expect(entries[0].course, 'FÍSICA');
+      expect(entries[0].start, '08:00');
+      expect(entries[1].course, 'QUÍMICA');
+      expect(entries[1].start, '10:15');
+    });
+
+    test('keeps a continuation inside the tail band of a cut room name', () {
+      // The break cut both the room name and one cell's stack of lines: the
+      // tail band holds the name's closing word, and the cell's remaining
+      // lines print *below* it — in the tail band, not above the page's
+      // first label — in the same column as the lines left on page 0.
+      final entries = ScheduleParser().parse([
+        _header(0),
+        _label(0, 700, 'B-403 (LABORATORIO DE'),
+        _cell(0, 700, _col1, 'FÍSICA SEC: 2'),
+        _cell(0, 703, _col1, 'CICLO: 1'),
+        _header(1),
+        _label(1, 42, 'CÓMPUTO)'),
+        _cell(1, 47, _col1, 'GARCÍA LÓPEZ MARÍA'),
+        _cell(1, 50, _col1, 'De: 08:00 a 10:00'),
+        _label(1, 100, 'AULA C-101'),
+        _cell(1, 100, _col1, 'QUÍMICA SEC: 1'),
+        _cell(1, 103, _col1, 'De: 11:00 a 13:00'),
+      ]);
+
+      expect(entries, hasLength(2));
+
+      final continued = entries[0];
+      expect(continued.room, 'B-403 (LABORATORIO DE CÓMPUTO)');
+      expect(continued.course, 'FÍSICA');
+      expect(continued.section, '2');
+      expect(continued.cycle, '1');
+      expect(continued.person, 'GARCÍA LÓPEZ MARÍA');
+      expect(continued.start, '08:00');
+      expect(continued.end, '10:00');
+
+      expect(entries[1].room, 'AULA C-101');
+      expect(entries[1].start, '11:00');
+    });
   });
 
   group('ScheduleParser on the sample PDF', () {
@@ -389,35 +620,19 @@ void main() {
       if (!present) return;
 
       final pdf = PdfDocument(inputBytes: File(_samplePath).readAsBytesSync());
-      final lines = PdfTextExtractor(pdf).extractTextLines();
+      final extractor = PdfTextExtractor(pdf);
 
       // `De:` is printed once per slot and `SEC:` once per section, so the
       // parser must consume exactly as many as the text layer holds.
       timeAnchors = 0;
       sectionAnchors = 0;
-      for (final line in lines) {
+      for (final line in extractor.extractTextLines()) {
         final text = line.text.trim();
         if (text.startsWith('De:')) timeAnchors++;
         if (text.contains('SEC:')) sectionAnchors++;
       }
 
-      entries = ScheduleParser().parse([
-        for (final line in lines)
-          ScheduleLine(
-            pageIndex: line.pageIndex,
-            words: [
-              for (final word in line.wordCollection)
-                if (word.text.trim().isNotEmpty)
-                  ScheduleWord(
-                    text: word.text.trim(),
-                    left: word.bounds.left,
-                    top: word.bounds.top,
-                    right: word.bounds.right,
-                    bottom: word.bounds.bottom,
-                  ),
-            ],
-          ),
-      ]);
+      entries = ScheduleParser().parse(_scheduleLines(extractor));
       pdf.dispose();
     });
 
@@ -448,6 +663,73 @@ void main() {
         entries.map((entry) => entry.room),
         contains('J-223 (LABORATORIO DE BIOLOGÍA CELULAR Y MICROBIOLOGÍA)'),
       );
+    }, skip: skip);
+  });
+
+  group('ScheduleParser on the October 2026 sample PDF', () {
+    final present = File(_newSamplePath).existsSync();
+    final skip = present ? false : 'sample_02 pdf not found';
+
+    late List<ScheduleEntry> entries;
+    late int timeAnchors;
+    late int sectionAnchors;
+
+    setUpAll(() {
+      if (!present) return;
+
+      final pdf = PdfDocument(
+        inputBytes: File(_newSamplePath).readAsBytesSync(),
+      );
+      final extractor = PdfTextExtractor(pdf);
+
+      timeAnchors = 0;
+      sectionAnchors = 0;
+      for (final line in extractor.extractTextLines()) {
+        final text = line.text.trim();
+        if (text.startsWith('De:')) timeAnchors++;
+        if (text.contains('SEC:')) sectionAnchors++;
+      }
+
+      entries = ScheduleParser().parse(_scheduleLines(extractor));
+      pdf.dispose();
+    });
+
+    test('stitches the per-character text layer into whole entries', () {
+      expect(entries, isNotEmpty);
+      // One printed line can hold two cells' time ranges (a page-break
+      // continuation row shares a baseline), so the entries started can
+      // outnumber the `De:` lines — but never fall short of one per line.
+      expect(
+        entries.where((entry) => entry.start != null),
+        hasLength(greaterThanOrEqualTo(timeAnchors)),
+      );
+      expect(
+        entries.where((entry) => entry.section != null),
+        hasLength(sectionAnchors),
+      );
+      expect(entries.where((entry) => entry.start == null), isEmpty);
+    }, skip: skip);
+
+    test('never splits a room name and keeps the compute labs', () {
+      final rooms = {for (final entry in entries) entry.room};
+      expect(
+        rooms.where((room) => room.contains('(') && !room.contains(')')),
+        isEmpty,
+      );
+      expect(rooms, contains('B-203 (LABORATORIO DE CÓMPUTO)'));
+    }, skip: skip);
+
+    test('reads a booked slot whole', () {
+      final entry = entries.firstWhere(
+        (entry) =>
+            entry.room == 'B-201 (LABORATORIO DE CÓMPUTO)' &&
+            entry.start == '18:00',
+      );
+      expect(entry.end, '21:00');
+      expect(entry.course, 'GESTION DE DATOS (BIG DATA Y BI)');
+      expect(entry.section, '32');
+      expect(entry.cycle, '6');
+      expect(entry.person, 'RECALDE PEÑA FRESHY ANALY');
     }, skip: skip);
   });
 }

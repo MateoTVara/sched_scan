@@ -10,11 +10,11 @@ import 'package:sched_scan/schedule/models/entry_section.dart';
 import 'package:sched_scan/schedule/models/schedule_entry.dart';
 import 'package:sched_scan/schedule/models/schedule_source.dart';
 
-const _samplePath = 'test/fixtures/sample.pdf';
+const _samplePath = 'test/fixtures/sample_01.pdf';
 
 final _missing = File(_samplePath).existsSync()
     ? false
-    : 'sample pdf not found — place it at $_samplePath';
+    : 'sample_01 pdf not found — place it at $_samplePath';
 
 /// The room-code regex the viewmodel groups blocks with, kept here so the
 /// test can check the result without duplicating the logic under test.

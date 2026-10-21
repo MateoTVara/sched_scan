@@ -14,10 +14,14 @@ class ScheduleLine {
   /// 0-based page this line appears on.
   final int pageIndex;
 
-  /// Words left to right, with whitespace-only fragments already dropped.
+  /// Words left to right, as the text layer emits them: possibly one
+  /// fragment per character, with whitespace fragments between words.
+  /// `ScheduleParser` stitches them back into whole words before it reads
+  /// anything (see `ScheduleParser.stitchGap`).
   final List<ScheduleWord> words;
 
   /// Words joined with a single space; used to spot page chrome such as the
-  /// `AULA / HORA` header row or the `N de M` page counter.
+  /// `AULA / HORA` header row or the `N de M` page counter — on a stitched
+  /// line only, since a raw fragment line reads `A U L A / H O R A`.
   String get text => words.map((w) => w.text).join(' ');
 }

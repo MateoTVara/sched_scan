@@ -12,24 +12,29 @@ import 'package:sched_scan/schedule/models/schedule_word.dart';
 /// useless — a room label and the first cell of its row land on the same text
 /// line — so every decision is made from geometry:
 ///
-/// 1. page chrome is dropped (title, URL footer, `N de M` counter,
+/// 1. the text layer's fragments are stitched back into whole words (the
+///    newer PDFs emit text character by character — see [stitchGap]),
+/// 2. page chrome is dropped (title, URL footer, `N de M` counter,
 ///    `AULA / HORA` header row, `Buscar...`),
-/// 2. the room column ends where the first time anchor starts (x ≈ 79.9pt on
-///    every page of the sample). No word straddles that line, so words on the
-///    left are room labels and words on the right are cell content,
-/// 3. label words are stacked into visual lines, then into rooms: two label
+/// 3. the room column ends where the first time anchor starts (read per
+///    page off the header — x ≈ 79.9pt on the old sample, ≈ 76.2pt on the
+///    new ones). No word straddles that line, so words on the left are
+///    room labels and words on the right are cell content,
+/// 4. label words are stacked into visual lines, then into rooms: two label
 ///    lines belong to the same room when they sit at most
-///    [_roomLineGap] apart *or* the room name so far has an unclosed `(`.
+///    [roomLineGap] apart *or* the room name so far has an unclosed `(`.
 ///    The paren rule exists because labels wrap with varying line heights
 ///    (a 4.7pt gap can still be inside one name) and page breaks cut names in
 ///    half,
-/// 4. each room owns the horizontal band from its top down to the next room's
+/// 5. each room owns the horizontal band from its top down to the next room's
 ///    top on the same page; every cell line is assigned to the band that
 ///    contains its y,
-/// 5. inside a band, cell lines are grouped by centre-x within
-///    [_cellCenterTolerance] — lines of one cell are centre-aligned to well
-///    under a point while neighbouring cells are tens of points apart,
-/// 6. each group of lines is read into one [ScheduleEntry].
+/// 6. a line's cell words are split into runs at [cellSplitGap] (cells
+///    occasionally share a baseline), and inside a band each run is grouped
+///    with the other cell lines by centre-x within [cellCenterTolerance] —
+///    lines of one cell are centre-aligned to well under a point while
+///    neighbouring cells are tens of points apart,
+/// 7. each group of lines is read into one [ScheduleEntry].
 class ScheduleParser {
   /// Two label lines belong to the same room when the gap between them is at
   /// most this many points.
@@ -55,16 +60,45 @@ class ScheduleParser {
   /// inside a band is 0.1pt — so 1pt sits comfortably between the two.
   static const double bandTolerance = 1.0;
 
+  /// The horizontal gap at or below which two consecutive fragments of one
+  /// line belong to the same printed word.
+  ///
+  /// The PDFs of October 2026 emit the text layer character by character —
+  /// `A`, `U`, `L`, `A` …, with a time anchor split as `07:` + `00` — so
+  /// every rule below has to see whole words again first (see
+  /// [_stitchWords]). Measured across every fixture: fragments of one word
+  /// abut (gap ≤ 0.25pt, often overlapping) while the closest two real words
+  /// ever get is 0.75pt, with nothing in between. A whitespace fragment
+  /// ends a run regardless of the gap, so two real words on neighbouring
+  /// columns can never merge however close they print.
+  static const double stitchGap = 0.5;
+
+  /// The horizontal gap above which two words on one text line belong to
+  /// two different table cells.
+  ///
+  /// Cells occasionally share a baseline — the October 2026 PDFs print a
+  /// page-break continuation row's two time ranges as a single line — so a
+  /// line's cell words are split into runs at this gap, one run per cell.
+  /// Measured across every fixture: words of one cell's line sit at most a
+  /// space apart (≤ 2.5pt) while two cells on one baseline are over 100pt
+  /// apart, with nothing in between.
+  static const double cellSplitGap = 5.0;
+
   /// Boilerplate that must never be read as a room label or a cell.
   static final RegExp _pageCounter = RegExp(r'^\d+ de \d+');
   static final RegExp _timeAnchor = RegExp(r'^\d{1,2}:\d{2}$');
 
   /// Cell vocabulary.
   static final RegExp _status = RegExp(r'^(LIBRE|RESERVA[A-Z ]*)$');
+
+  /// A printed time range — with the closing `a HH:MM` occasionally left to
+  /// wrap onto the next line (both formats wrap a narrow cell, one as
+  /// `De: 07:00` + `a 07:15`, the newer one as `De: 10:15 a` + `11:00`).
   static final RegExp _timeRange = RegExp(
-    r'^De:\s*(\d{1,2}:\d{2})(?:\s+a\s+(\d{1,2}:\d{2}))?$',
+    r'^De:\s*(\d{1,2}:\d{2})(?:\s+a(?:\s+(\d{1,2}:\d{2}))?)?$',
   );
   static final RegExp _timeContinuation = RegExp(r'^a\s+(\d{1,2}:\d{2})$');
+  static final RegExp _bareTime = RegExp(r'^\d{1,2}:\d{2}$');
   static final RegExp _cycle = RegExp(r'^CICLO:\s*(\d+)$');
   static final RegExp _bareSection = RegExp(r'^\d+$');
   static final RegExp _note = RegExp(
@@ -74,8 +108,12 @@ class ScheduleParser {
 
   /// Reads every entry of the document, in table order.
   List<ScheduleEntry> parse(List<ScheduleLine> lines) {
+    // The text layer may hand back one fragment per character; nothing
+    // below can match a word it cannot see, so whole words come first.
+    final whole = _stitchWords(lines);
+
     final pages = <int, List<ScheduleLine>>{};
-    for (final line in lines) {
+    for (final line in whole) {
       if (line.words.isEmpty) continue;
       pages.putIfAbsent(line.pageIndex, () => []).add(line);
     }
@@ -105,8 +143,8 @@ class ScheduleParser {
           }
         }
         labelWords.addAll(labels);
-        if (cells.isNotEmpty) {
-          cellLines.add(_CellLine(pageIndex: page, words: cells));
+        for (final run in _cellRuns(cells)) {
+          cellLines.add(_CellLine(pageIndex: page, words: run));
         }
       }
 
@@ -126,7 +164,9 @@ class ScheduleParser {
     // Cells are read only once every page knows its bands, because a cell can
     // straddle a page break: the course and programme sit at the bottom of one
     // page while the docente and time range continue in the same column at the
-    // top of the next, above that page's first room label.
+    // top of the next. Those continuation lines land either above the next
+    // page's first room label, or — when the break also cut the room's name —
+    // inside the tail band that holds its closing words.
     for (var i = 0; i < order.length; i++) {
       final page = order[i];
       final pageBands = bandsByPage[page];
@@ -143,10 +183,26 @@ class ScheduleParser {
       }
 
       final firstTop = pageBands.first.top;
+      final inTailOfPrevious =
+          previous != null &&
+          previous.isNotEmpty &&
+          pageBands.first.isTailOfPrevious;
       for (final cell in pageCells) {
-        if (cell.top < firstTop - bandTolerance &&
-            previous != null &&
-            previous.isNotEmpty) {
+        final printedAboveFirstLabel = cell.top < firstTop - bandTolerance;
+        // A cell printed inside the tail band continues the previous page's
+        // row when its own column already holds part of that cell — the row
+        // is cut by the break, and so is the cell's stack of lines. Other
+        // columns of the same straddled row are new cells and stay put.
+        final continuesCell =
+            inTailOfPrevious &&
+            _bandFor(pageBands, cell.top) == pageBands.first &&
+            previous.last.cells.any(
+              (line) =>
+                  (line.centerX - cell.centerX).abs() <= cellCenterTolerance,
+            );
+        if (previous != null &&
+            previous.isNotEmpty &&
+            (printedAboveFirstLabel || continuesCell)) {
           previous.last.cells.add(cell);
         } else {
           _bandFor(pageBands, cell.top).cells.add(cell);
@@ -155,6 +211,53 @@ class ScheduleParser {
     }
 
     return [for (final band in bands) ..._entriesOf(band)];
+  }
+
+  // ------------------------------------------------------------- stitching
+
+  /// Puts the printed words back together out of the text layer's
+  /// fragments — the first thing [parse] does, before any rule looks at a
+  /// word's text.
+  static List<ScheduleLine> _stitchWords(List<ScheduleLine> lines) {
+    return [
+      for (final line in lines)
+        ScheduleLine(pageIndex: line.pageIndex, words: _stitched(line.words)),
+    ];
+  }
+
+  /// One line's words, stitched: fragments at most [stitchGap] apart join
+  /// into one word, a whitespace fragment ends the run and is itself
+  /// dropped (the line's words are joined with a single space again when
+  /// read), and words already whole pass through untouched.
+  static List<ScheduleWord> _stitched(List<ScheduleWord> words) {
+    final sorted = [...words]..sort((a, b) => a.left.compareTo(b.left));
+
+    final stitched = <ScheduleWord>[];
+    ScheduleWord? run;
+    for (final word in sorted) {
+      if (word.text.trim().isEmpty) {
+        if (run != null) {
+          stitched.add(run);
+          run = null;
+        }
+        continue;
+      }
+      final current = run;
+      if (current != null && word.left - current.right <= stitchGap) {
+        run = ScheduleWord(
+          text: current.text + word.text,
+          left: current.left,
+          top: math.min(current.top, word.top),
+          right: math.max(current.right, word.right),
+          bottom: math.max(current.bottom, word.bottom),
+        );
+      } else {
+        if (current != null) stitched.add(current);
+        run = word;
+      }
+    }
+    if (run != null) stitched.add(run);
+    return stitched;
   }
 
   // ---------------------------------------------------------------- chrome
@@ -173,7 +276,8 @@ class ScheduleParser {
 
   /// x of the first time anchor in the `AULA / HORA` header row — the left
   /// edge of the table's time area, and therefore the right edge of the room
-  /// column. Identical (79.9) on every page of the sample.
+  /// column. Read per page: ≈ 79.9pt on the old sample, ≈ 76.2pt on the
+  /// October 2026 ones.
   static double? _roomBoundary(List<ScheduleLine> lines) {
     for (final line in lines) {
       if (!line.text.startsWith('AULA / HORA')) continue;
@@ -224,7 +328,9 @@ class ScheduleParser {
   /// Glues a room name that a page break cut in half: when a name still has an
   /// unclosed `(` it continues as the first name of the next page. Only across
   /// a break — a label line can never be left open on its own page, because
-  /// `_roomBlocks` keeps absorbing until the paren closes.
+  /// `_roomBlocks` keeps absorbing until the paren closes. The next page's
+  /// first band is then the cut room's tail: its cells continue the previous
+  /// page's last band ([`_Band.isTailOfPrevious`]).
   static void _continueNamesAcrossPages(List<_Band> bands) {
     for (var i = 0; i + 1 < bands.length; i++) {
       if (bands[i + 1].pageIndex <= bands[i].pageIndex) continue;
@@ -232,10 +338,30 @@ class ScheduleParser {
       final merged = '${bands[i].label} ${bands[i + 1].label}';
       bands[i].label = merged;
       bands[i + 1].label = merged;
+      bands[i + 1].isTailOfPrevious = true;
     }
   }
 
   // ------------------------------------------------------------------ cells
+
+  /// Splits one line's cell words into the runs of separate table cells
+  /// printed on the same baseline — one run per cell, each becoming its own
+  /// [_CellLine]. See [cellSplitGap].
+  static List<List<ScheduleWord>> _cellRuns(List<ScheduleWord> words) {
+    if (words.isEmpty) return const [];
+    final sorted = [...words]..sort((a, b) => a.left.compareTo(b.left));
+    final runs = <List<ScheduleWord>>[
+      [sorted.first],
+    ];
+    for (var i = 1; i < sorted.length; i++) {
+      if (sorted[i].left - sorted[i - 1].right > cellSplitGap) {
+        runs.add([sorted[i]]);
+      } else {
+        runs.last.add(sorted[i]);
+      }
+    }
+    return runs;
+  }
 
   /// The band whose top is the closest one at or just above [y] — with a
   /// tolerance, because a cell's first line and its room label share a
@@ -361,11 +487,15 @@ class ScheduleParser {
         inProgram = false;
         start = time.group(1);
         end = time.group(2);
-        // A narrow cell wraps `De: 07:00 a 07:15` onto two lines.
+        // A narrow cell wraps the range's end onto the next line — as
+        // `a 07:15` in both formats, or a bare `11:00` in the newer one.
         if (end == null && i + 1 < text.length) {
           final continuation = _timeContinuation.firstMatch(text[i + 1]);
           if (continuation != null) {
             end = continuation.group(1);
+            i++;
+          } else if (_bareTime.hasMatch(text[i + 1])) {
+            end = text[i + 1];
             i++;
           }
         }
@@ -541,4 +671,9 @@ class _Band {
   final double top;
   String label;
   final cells = <_CellLine>[];
+
+  /// Set on the next page's first band when the previous page ended with an
+  /// unclosed room name: the band then holds only the cut room's closing
+  /// words, and its cells continue the previous page's last band.
+  bool isTailOfPrevious = false;
 }
