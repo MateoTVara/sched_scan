@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sched_scan/scanner/models/preset.dart';
 import 'package:sched_scan/scanner/models/scan_filters.dart';
 import 'package:sched_scan/scanner/models/sort_mode.dart';
 import 'package:sched_scan/scanner/scanner_viewmodel.dart';
@@ -27,9 +28,9 @@ XFile _sample() =>
 /// Never disposed: closing the ML Kit recognizer reaches a plugin that does
 /// not exist on the host, and no OCR runs in these tests to allocate one.
 ///
-/// The clock reads midnight, so under the default freshness row every
-/// fixture start is still to come and nothing is stale — the window only
-/// acts in the test that asks for it.
+/// The clock reads midnight; the time-bound views (`Ahora`, `A punto de
+/// comenzar`) are off by the default choice, so only the tests that ask
+/// for them act on it.
 ScannerViewModel _viewModel() =>
     ScannerViewModel(clock: () => DateTime(2026, 1, 1));
 
@@ -61,19 +62,14 @@ bool _isSorted(List<ScheduleEntry> slots, SortOrder order) {
   return true;
 }
 
-/// Walks one filter row back to `none`.
-void _markNone(ScannerViewModel viewModel, FilterRow row) {
-  while (viewModel.filters.stateOf(row) != TypeMark.none) {
-    viewModel.cycleFilter(row);
-  }
-}
-
-/// Walks every filter row back to `none`, so a test sees the selection's
-/// own effect instead of the default marks' (labs in, free out, stale out).
+/// Walks the choice back to "nothing filters": every room, the whole
+/// day, both kinds of slot — so a test sees the selection's own effect
+/// instead of the defaults' (labs, whole day, booked only).
 void _noFilters(ScannerViewModel viewModel) {
-  for (final row in FilterRow.values) {
-    _markNone(viewModel, row);
-  }
+  viewModel
+    ..setRoomType(RoomTypeChoice.all)
+    ..setView(ViewChoice.all)
+    ..setState(StateChoice.all);
 }
 
 /// An in-memory [SettingsStore]: what the viewmodel writes, [read] hands
@@ -264,7 +260,7 @@ void main() {
       final viewModel = _viewModel();
 
       await viewModel.scan(SchedulePdf(_sample()));
-      // The rows off, so the pick's own effect is all that narrows here.
+      // The choice off, so the pick's own effect is all that narrows here.
       _noFilters(viewModel);
 
       final sections = viewModel.sectionsByBlock;
@@ -292,7 +288,7 @@ void main() {
     skip: _missing,
   );
 
-  test('a new scan forgets the previous filter', () async {
+  test('a new scan forgets the previous selection', () async {
     final viewModel = _viewModel();
 
     await viewModel.scan(SchedulePdf(_sample()));
@@ -531,17 +527,22 @@ void main() {
       return viewModel;
     }
 
-    test('a scan starts from the default marks', () async {
+    test('a scan starts from the default choice', () async {
       final viewModel = _viewModel();
 
       await viewModel.scan(SchedulePdf(_sample()));
 
-      // The compute labs in, the free slots out, the stale sessions out.
+      // The labs' whole day, booked slots only — what a fresh install
+      // shows — under the time-first ascending sort.
+      expect(viewModel.choice, ScanSettings.defaults);
       final filters = viewModel.filters;
-      expect(filters.marks, defaultFilterMarks);
-      expect(filters.stateOf(FilterRow.computeLab), TypeMark.include);
-      expect(filters.stateOf(FilterRow.libres), TypeMark.exclude);
-      expect(filters.stateOf(FilterRow.last15), TypeMark.include);
+      expect(filters.roomType, RoomTypeChoice.labs);
+      expect(filters.view, ViewChoice.all);
+      expect(filters.state, StateChoice.busy);
+      expect(viewModel.sortMode, SortMode.timeThenRoom);
+      expect(viewModel.sortOrder, SortOrder.ascending);
+      // Nothing preset fits it: the defaults are the custom state.
+      expect(viewModel.activePreset, isNull);
     }, skip: _missing);
 
     test('the default list is the booked compute labs', () async {
@@ -550,17 +551,12 @@ void main() {
       final cards = _cards(viewModel.visibleSectionsByBlock).toList();
       // The sample books compute labs…
       expect(cards, isNotEmpty);
-      // …and that is all that shows: no other room and no free slot. The
-      // test clock reads midnight, so every fixture start is ahead of it
-      // and the window keeps nothing back for being old.
+      // …and that is all that shows: no other room and no free slot.
       expect([
         for (final card in cards) isComputeLab(card.room),
       ], everyElement(true));
       expect([for (final card in cards) card.isFree], everyElement(false));
-      expect([
-        for (final card in cards) isStale(card.start, DateTime(2026, 1, 1)),
-      ], everyElement(false));
-      // The rest of the schedule is behind the marks: every room outside
+      // The rest of the schedule is behind the choice: every room outside
       // the lab list never reaches the list.
       expect(
         _cardCount(viewModel.visibleSectionsByBlock),
@@ -568,14 +564,14 @@ void main() {
       );
     }, skip: _missing);
 
-    test('the compute-lab row picks the labs out and back', () async {
+    test('the Tipo de aula choice picks the labs out and back', () async {
       final viewModel = await allSelected(unfiltered: true);
 
       final everything = _cards(viewModel.visibleSectionsByBlock).toList();
       expect(everything.any((card) => isComputeLab(card.room)), isTrue);
       expect(everything.any((card) => !isComputeLab(card.room)), isTrue);
 
-      viewModel.cycleFilter(FilterRow.computeLab); // none → include
+      viewModel.setRoomType(RoomTypeChoice.labs);
 
       final labs = _cards(viewModel.visibleSectionsByBlock).toList();
       expect(labs, isNotEmpty);
@@ -584,7 +580,7 @@ void main() {
       ], everyElement(true));
       expect(labs.length, lessThan(everything.length));
 
-      viewModel.cycleFilter(FilterRow.computeLab); // include → exclude
+      viewModel.setRoomType(RoomTypeChoice.rooms);
 
       final rest = _cards(viewModel.visibleSectionsByBlock).toList();
       expect(rest, isNotEmpty);
@@ -593,7 +589,7 @@ void main() {
       ], everyElement(false));
       expect(rest.length, everything.length - labs.length);
 
-      viewModel.cycleFilter(FilterRow.computeLab); // exclude → none
+      viewModel.setRoomType(RoomTypeChoice.all);
 
       expect(
         _cards(viewModel.visibleSectionsByBlock),
@@ -601,25 +597,21 @@ void main() {
       );
     }, skip: _missing);
 
-    test('the Libres row decides which slots exist as cards', () async {
+    test('the Estado choice decides which slots exist as cards', () async {
       final viewModel = _viewModel();
 
       await viewModel.scan(SchedulePdf(_sample()));
       // The sample has both kinds of slot to filter.
       expect(viewModel.entries.any((entry) => entry.isFree), isTrue);
       expect(viewModel.entries.any((entry) => !entry.isFree), isTrue);
-      // Only `Libres` moves here: the labs and the window are walked off,
-      // so every room of the sample is on the list.
-      _markNone(viewModel, FilterRow.computeLab);
-      _markNone(viewModel, FilterRow.last15);
 
-      // Excluded — the default: free slots are not cards at all, neither
-      // in the list nor among the chips' sections.
+      // Solo ocupadas — the default: free slots are not cards at all,
+      // neither in the list nor among the chips' sections.
       var cards = _cards(viewModel.sectionsByBlock).toList();
       expect(cards, isNotEmpty);
       expect([for (final card in cards) card.isFree], everyElement(false));
 
-      viewModel.cycleFilter(FilterRow.libres); // exclude → none
+      viewModel.setState(StateChoice.all);
 
       // Both kinds now: the free cards join the booked ones, and a room
       // that only ever held free slots gets a section of its own.
@@ -627,7 +619,7 @@ void main() {
       expect(cards.any((card) => card.isFree), isTrue);
       expect(cards.any((card) => !card.isFree), isTrue);
 
-      viewModel.cycleFilter(FilterRow.libres); // none → include
+      viewModel.setState(StateChoice.free);
 
       // Only the free slots remain — sections and list alike.
       cards = _cards(viewModel.sectionsByBlock).toList();
@@ -638,10 +630,11 @@ void main() {
       expect(visible, isNotEmpty);
       expect([for (final card in visible) card.isFree], everyElement(true));
 
-      viewModel.cycleFilter(FilterRow.libres); // include → exclude
+      viewModel.setState(StateChoice.busy);
 
       // Back to the default: the free cards are gone again.
       cards = _cards(viewModel.sectionsByBlock).toList();
+      expect(cards, isNotEmpty);
       expect([for (final card in cards) card.isFree], everyElement(false));
       expect([
         for (final card in _cards(viewModel.visibleSectionsByBlock))
@@ -649,69 +642,14 @@ void main() {
       ], everyElement(false));
     }, skip: _missing);
 
-    test('the freshness row drops the stale sessions', () async {
+    test('the Qué ver choice picks the part of the day', () async {
       final now = DateTime(2026, 1, 1, 10, 5);
       final viewModel = ScannerViewModel(clock: () => now);
 
       await viewModel.scan(SchedulePdf(_sample()));
-      // Only the window acts here — every room is on the list; the free
-      // slots stay at their default exclude.
-      _markNone(viewModel, FilterRow.computeLab);
-      selectAll(viewModel);
-
-      final booked = _cards(viewModel.sectionsByBlock).toList();
-      final stale = [
-        for (final card in booked)
-          if (isStale(card.start, now)) card,
-      ];
-      final fresh = [
-        for (final card in booked)
-          if (!isStale(card.start, now)) card,
-      ];
-      // The morning is over, the rest of the day is not.
-      expect(stale, isNotEmpty);
-      expect(fresh, isNotEmpty);
-
-      // Marked in — the default: everything that started more than a
-      // quarter of an hour before 10:05 stays behind, the rest shows.
-      final shown = _cards(viewModel.visibleSectionsByBlock).toList();
-      expect(shown.length, fresh.length);
-      expect([
-        for (final card in shown) isStale(card.start, now),
-      ], everyElement(false));
-      // The example the window is built on: a 09:30 card is gone…
-      expect([for (final card in shown) card.start], isNot(contains('09:30')));
-      // …a 10:00 one is not.
-      expect([for (final card in shown) card.start], contains('10:00'));
-
-      // Marked out — the other half: only the sessions already under way
-      // for more than fifteen minutes remain.
-      viewModel.cycleFilter(FilterRow.last15); // include → exclude
-
-      final behind = _cards(viewModel.visibleSectionsByBlock).toList();
-      expect(behind.length, stale.length);
-      expect([
-        for (final card in behind) isStale(card.start, now),
-      ], everyElement(true));
-
-      // Back to none: the window stops filtering at all.
-      viewModel.cycleFilter(FilterRow.last15); // exclude → none
-
-      expect(
-        _cards(viewModel.visibleSectionsByBlock),
-        hasLength(booked.length),
-      );
-    }, skip: _missing);
-
-    test('the now row keeps only the session underway', () async {
-      final now = DateTime(2026, 1, 1, 10, 5);
-      final viewModel = ScannerViewModel(clock: () => now);
-
-      await viewModel.scan(SchedulePdf(_sample()));
-      // Only the now row acts here — every booked room is on the list; the
-      // labs and the window are walked off, the free slots stay out.
-      _markNone(viewModel, FilterRow.computeLab);
-      _markNone(viewModel, FilterRow.last15);
+      // Only the view acts here — every room on the list, the free slots
+      // out at their default state.
+      viewModel.setRoomType(RoomTypeChoice.all);
       selectAll(viewModel);
 
       final booked = _cards(viewModel.sectionsByBlock).toList();
@@ -723,13 +661,19 @@ void main() {
         for (final card in booked)
           if (!isOngoing(card.start, card.end, now)) card,
       ];
-      // The sample runs sessions across the clock's hour.
+      final imminent = [
+        for (final card in booked)
+          if (isImminent(card.start, now)) card,
+      ];
+      // The sample runs sessions across the clock's hour and has more
+      // still to come within the window.
       expect(underway, isNotEmpty);
       expect(rest, isNotEmpty);
+      expect(imminent, isNotEmpty);
 
-      // Marked in: only the cards whose printed range covers 10:05 stay —
-      // a room with nothing underway drops out with them.
-      viewModel.cycleFilter(FilterRow.now); // none → include
+      // Ahora: only the cards whose printed range covers 10:05 stay — a
+      // room with nothing underway drops out with them.
+      viewModel.setView(ViewChoice.now);
 
       final shown = _cards(viewModel.visibleSectionsByBlock).toList();
       expect(shown.length, underway.length);
@@ -737,17 +681,21 @@ void main() {
         for (final card in shown) isOngoing(card.start, card.end, now),
       ], everyElement(true));
 
-      // Marked out — the other half: everything but the running sessions.
-      viewModel.cycleFilter(FilterRow.now); // include → exclude
+      // A punto de comenzar: only the ones starting within the next
+      // quarter of an hour — the morning long past, the underway ones
+      // already started.
+      viewModel.setView(ViewChoice.soon);
 
-      final behind = _cards(viewModel.visibleSectionsByBlock).toList();
-      expect(behind.length, rest.length);
+      final soon = _cards(viewModel.visibleSectionsByBlock).toList();
+      expect(soon.length, imminent.length);
       expect([
-        for (final card in behind) isOngoing(card.start, card.end, now),
-      ], everyElement(false));
+        for (final card in soon) isImminent(card.start, now),
+      ], everyElement(true));
+      expect([for (final card in soon) card.start], isNot(contains('09:30')));
+      expect([for (final card in soon) card.start], isNot(contains('10:00')));
 
-      // Back to none: the row stops filtering at all.
-      viewModel.cycleFilter(FilterRow.now); // exclude → none
+      // Todo: the view stops filtering at all.
+      viewModel.setView(ViewChoice.all);
 
       expect(
         _cards(viewModel.visibleSectionsByBlock),
@@ -755,16 +703,15 @@ void main() {
       );
     }, skip: _missing);
 
-    test('the now row can empty a selection and say why', () async {
+    test('the Qué ver choice can empty a selection and say why', () async {
       final now = DateTime(2026, 1, 1, 10, 5);
       final viewModel = ScannerViewModel(clock: () => now);
 
       await viewModel.scan(SchedulePdf(_sample()));
-      // Only the now row acts here: the labs and the window are walked
-      // off, the free slots stay at their default exclude — with free
-      // slots in, every room would hold something underway.
-      _markNone(viewModel, FilterRow.computeLab);
-      _markNone(viewModel, FilterRow.last15);
+      // Only the view acts here: the rooms widen to every one, the free
+      // slots stay out at their default state — with free slots in, some
+      // room would always hold something underway.
+      viewModel.setRoomType(RoomTypeChoice.all);
 
       // A section whose cards have all been over for a while — the
       // sample's early morning, asked for rather than assumed.
@@ -777,14 +724,14 @@ void main() {
       viewModel.toggleSection(section.title);
       expect(viewModel.visibleSectionsByBlock, isNotEmpty);
 
-      viewModel.cycleFilter(FilterRow.now); // none → include
+      viewModel.setView(ViewChoice.now);
 
       // A block *is* selected, so the view says why there is nothing.
       expect(viewModel.visibleSectionsByBlock, isEmpty);
       expect(viewModel.typeFilteredOut, isTrue);
     }, skip: _missing);
 
-    test('the marks narrow inside the chip selection', () async {
+    test('the choices narrow inside the chip selection', () async {
       final viewModel = _viewModel();
       await viewModel.scan(SchedulePdf(_sample()));
       _noFilters(viewModel);
@@ -800,17 +747,16 @@ void main() {
       final selected = _cardCount(viewModel.visibleSectionsByBlock);
       expect(selected, greaterThan(0));
 
-      // Marking the labs in empties this selection — every card in it
-      // lives in a lab-less room — and says why, since a block *is*
-      // selected.
-      viewModel.cycleFilter(FilterRow.computeLab); // none → include
+      // The labs on this section empties it — every card in it lives in
+      // a lab-less room — and says why, since a block *is* selected.
+      viewModel.setRoomType(RoomTypeChoice.labs);
 
       expect(viewModel.visibleSectionsByBlock, isEmpty);
       expect(viewModel.typeFilteredOut, isTrue);
 
-      // One tap further the include becomes an exclude, so the section's
-      // own cards — none of them labs — are back.
-      viewModel.cycleFilter(FilterRow.computeLab); // include → exclude
+      // The other way round, the section's own cards — none of them labs
+      // — are all back.
+      viewModel.setRoomType(RoomTypeChoice.rooms);
 
       expect(_cardCount(viewModel.visibleSectionsByBlock), selected);
       expect(viewModel.typeFilteredOut, isFalse);
@@ -819,11 +765,11 @@ void main() {
       expect([for (final s in viewModel.sectionsByBlock) s.title], titles);
     }, skip: _missing);
 
-    test('the marks filter inside a time group as well', () async {
+    test('the choices filter inside a time group as well', () async {
       final viewModel = await allSelected(unfiltered: true);
 
       final before = _cardCount(viewModel.visibleSectionsByBlock);
-      viewModel.cycleFilter(FilterRow.computeLab); // none → include
+      viewModel.setRoomType(RoomTypeChoice.labs);
 
       final visible = viewModel.visibleSectionsByBlock;
       expect(_cardCount(visible), lessThan(before));
@@ -840,19 +786,50 @@ void main() {
       );
     }, skip: _missing);
 
-    test('a new scan keeps the marks and clears the selection', () async {
+    test(
+      'a preset applies its whole choice, and names itself active',
+      () async {
+        final viewModel = _viewModel();
+
+        await viewModel.scan(SchedulePdf(_sample()));
+
+        // The defaults fit no preset — the `Personalizado` state…
+        expect(viewModel.activePreset, isNull);
+
+        viewModel.applyPreset(presets[2]); // Laboratorios por empezar
+
+        // …one tap puts the whole choice on it, and the name follows.
+        expect(viewModel.choice, presets[2].settings);
+        expect(viewModel.activePreset, presets[2]);
+        expect(viewModel.roomType, RoomTypeChoice.labs);
+        expect(viewModel.view, ViewChoice.soon);
+        expect(viewModel.state, StateChoice.busy);
+        // The sections followed the state choice: booked slots only.
+        expect([
+          for (final card in _cards(viewModel.sectionsByBlock)) card.isFree,
+        ], everyElement(false));
+
+        // One field moved off the preset and the name is gone again.
+        viewModel.setSort(SortMode.roomThenTime, SortOrder.ascending);
+
+        expect(viewModel.activePreset, isNull);
+      },
+      skip: _missing,
+    );
+
+    test('a new scan keeps the choice and clears the selection', () async {
       final viewModel = await allSelected();
       _noFilters(viewModel);
-      expect(viewModel.filters.marks, isNot(defaultFilterMarks));
-      expect(viewModel.filters.stateOf(FilterRow.libres), TypeMark.none);
+      expect(viewModel.choice, isNot(ScanSettings.defaults));
+      expect(viewModel.state, StateChoice.all);
       expect(viewModel.hasSelection, isTrue);
 
       await viewModel.scan(SchedulePdf(_sample()));
 
-      // The marks outlive the scan now — only the selection starts over,
-      // so the prompt shows until a chip is chosen.
-      expect(viewModel.filters.marks, isNot(defaultFilterMarks));
-      expect(viewModel.filters.stateOf(FilterRow.libres), TypeMark.none);
+      // The choice outlives the scan now — only the selection starts
+      // over, so the prompt shows until a chip is chosen.
+      expect(viewModel.choice, isNot(ScanSettings.defaults));
+      expect(viewModel.state, StateChoice.all);
       expect(viewModel.typeFilteredOut, isFalse);
       expect(viewModel.visibleSectionsByBlock, isEmpty); // chips went too
       expect(viewModel.hasSelection, isFalse);
@@ -865,24 +842,32 @@ void main() {
         ..stored = const ScanSettings(
           sortMode: SortMode.roomThenTime,
           sortOrder: SortOrder.descending,
-          marks: {FilterRow.last15: TypeMark.exclude},
+          roomType: RoomTypeChoice.rooms,
+          view: ViewChoice.soon,
+          state: StateChoice.all,
         );
       final viewModel = _storedViewModel(settings);
 
       await viewModel.scan(SchedulePdf(_sample()));
 
-      // The stored snapshot is the whole state: sort, direction and marks
-      // — rows it does not mention are none, not the defaults.
-      expect(viewModel.sortMode, SortMode.roomThenTime);
-      expect(viewModel.sortOrder, SortOrder.descending);
-      expect(viewModel.filters.marks, {FilterRow.last15: TypeMark.exclude});
-      // And the grouping follows the stored sort.
+      // The stored snapshot is the whole state — the five fields, nothing
+      // derived.
+      expect(viewModel.choice, settings.stored);
+      expect(viewModel.roomType, RoomTypeChoice.rooms);
+      expect(viewModel.view, ViewChoice.soon);
+      expect(viewModel.state, StateChoice.all);
+      // And the grouping follows the stored sort — in room mode a block's
+      // sub-headings are rooms, not start times.
       expect(
         viewModel.sectionsByBlock
             .expand((section) => section.rooms.keys)
             .any((key) => RegExp(r'^\d').hasMatch(key)),
         isFalse,
       );
+      // With `Libres y ocupadas`, free slots are cards.
+      expect([
+        for (final card in _cards(viewModel.sectionsByBlock)) card.isFree,
+      ], contains(true));
     }, skip: _missing);
 
     test('every choice is written back as it is made', () async {
@@ -894,14 +879,29 @@ void main() {
 
       expect(settings.stored!.sortMode, SortMode.roomThenTime);
       expect(settings.stored!.sortOrder, SortOrder.descending);
+      // The untouched sections come along as they stand — the defaults
+      // from the scan before the first change.
+      expect(settings.stored!.roomType, RoomTypeChoice.labs);
+      expect(settings.stored!.view, ViewChoice.all);
+      expect(settings.stored!.state, StateChoice.busy);
 
-      viewModel.cycleFilter(FilterRow.computeLab); // include → exclude
+      viewModel.setState(StateChoice.free);
 
-      expect(settings.stored!.marks[FilterRow.computeLab], TypeMark.exclude);
-      // The untouched rows come along as they stand — the defaults from
-      // the scan before the first change.
-      expect(settings.stored!.marks[FilterRow.libres], TypeMark.exclude);
-      expect(settings.stored!.marks[FilterRow.last15], TypeMark.include);
+      // The new field written, the sort kept…
+      expect(
+        settings.stored,
+        const ScanSettings(
+          sortMode: SortMode.roomThenTime,
+          sortOrder: SortOrder.descending,
+          roomType: RoomTypeChoice.labs,
+          view: ViewChoice.all,
+          state: StateChoice.free,
+        ),
+      );
+      viewModel.setRoomType(RoomTypeChoice.all);
+      expect(settings.stored!.roomType, RoomTypeChoice.all);
+      viewModel.setView(ViewChoice.soon);
+      expect(settings.stored!.view, ViewChoice.soon);
     }, skip: _missing);
 
     test(
@@ -911,37 +911,42 @@ void main() {
         final viewModel = _storedViewModel(settings);
 
         await viewModel.scan(SchedulePdf(_sample()));
-        viewModel.setSort(SortMode.roomThenTime, SortOrder.descending);
-        viewModel.cycleFilter(FilterRow.libres); // exclude → none
-        // A section with a compute lab in it — it has to outlive the
-        // restored lab include for the chips to still show something.
+        viewModel
+          ..setSort(SortMode.roomThenTime, SortOrder.descending)
+          ..setRoomType(RoomTypeChoice.rooms)
+          ..setState(StateChoice.all);
+        // A section with a *booked* lab in it — it has to outlive the
+        // restored `Laboratorios` and `Solo ocupadas` for the chips to
+        // still show something.
         final section = viewModel.sectionsByBlock
             .firstWhere(
               (section) =>
-                  _cards([section]).any((card) => isComputeLab(card.room)),
+                  _cards([section])
+                      .any((card) => isComputeLab(card.room) && !card.isFree),
             )
             .title;
         viewModel.toggleSection(section);
         expect(viewModel.hasSelection, isTrue);
-        // With `Libres` marked in, free slots are cards.
+        // With `Libres y ocupadas`, free slots are cards.
         expect([
           for (final card in _cards(viewModel.sectionsByBlock)) card.isFree,
         ], contains(true));
 
         viewModel.restoreDefaults();
 
+        expect(viewModel.choice, ScanSettings.defaults);
         expect(viewModel.sortMode, SortMode.timeThenRoom);
         expect(viewModel.sortOrder, SortOrder.ascending);
-        expect(viewModel.filters.marks, defaultFilterMarks);
-        // The sections were rebuilt with them — `Libres` excluded again,
-        // so the free slots are no cards.
+        expect(viewModel.roomType, RoomTypeChoice.labs);
+        expect(viewModel.view, ViewChoice.all);
+        expect(viewModel.state, StateChoice.busy);
+        // The sections were rebuilt with them — `Solo ocupadas` again, so
+        // the free slots are no cards.
         expect([
           for (final card in _cards(viewModel.sectionsByBlock)) card.isFree,
         ], everyElement(false));
         // The reset was written back…
-        expect(settings.stored!.sortMode, SortMode.timeThenRoom);
-        expect(settings.stored!.sortOrder, SortOrder.ascending);
-        expect(settings.stored!.marks, defaultFilterMarks);
+        expect(settings.stored, ScanSettings.defaults);
         // …while the chips were left alone: the pick still points at its
         // section, so the cards show again under the defaults.
         expect(viewModel.sectionFilter.selected, {section});

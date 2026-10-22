@@ -14,6 +14,16 @@ Future<SharedPrefsSettingsStore> _store([
   return SharedPrefsSettingsStore(await SharedPreferences.getInstance());
 }
 
+/// A choice with every field off the defaults, so a round trip has
+/// something of each to bring back.
+const _everywhere = ScanSettings(
+  sortMode: SortMode.roomThenTime,
+  sortOrder: SortOrder.descending,
+  roomType: RoomTypeChoice.rooms,
+  view: ViewChoice.soon,
+  state: StateChoice.free,
+);
+
 void main() {
   test('a fresh install stores nothing — read comes back null', () async {
     final store = await _store();
@@ -21,49 +31,15 @@ void main() {
     expect(store.read(), isNull);
   });
 
-  test('what is written is what is read back, row for row', () async {
+  test('what is written is what is read back, field for field', () async {
     final store = await _store();
 
-    await store.write(
-      const ScanSettings(
-        sortMode: SortMode.roomThenTime,
-        sortOrder: SortOrder.descending,
-        marks: {
-          FilterRow.computeLab: TypeMark.exclude,
-          FilterRow.last15: TypeMark.exclude,
-        },
-      ),
-    );
+    await store.write(_everywhere);
 
-    final read = store.read();
-    expect(read, isNotNull);
-    expect(read!.sortMode, SortMode.roomThenTime);
-    expect(read.sortOrder, SortOrder.descending);
-    // Only the two marked rows; the absent ones are none, the same
-    // convention the viewmodel's marks keep.
-    expect(read.marks, {
-      FilterRow.computeLab: TypeMark.exclude,
-      FilterRow.last15: TypeMark.exclude,
-    });
-  });
-
-  test('a row written back as none leaves no key behind', () async {
-    final store = await _store();
-    await store.write(
-      const ScanSettings(
-        sortMode: SortMode.roomThenTime,
-        sortOrder: SortOrder.ascending,
-        marks: {FilterRow.libres: TypeMark.include},
-      ),
-    );
-    expect(store.read()!.marks[FilterRow.libres], TypeMark.include);
-
-    await store.write(ScanSettings.defaults);
-
-    final read = store.read()!;
-    expect(read.marks, defaultFilterMarks);
-    expect(read.sortMode, SortMode.timeThenRoom);
-    expect(read.sortOrder, SortOrder.ascending);
+    expect(store.read(), _everywhere);
+    expect(store.read()!.roomType, RoomTypeChoice.rooms);
+    expect(store.read()!.view, ViewChoice.soon);
+    expect(store.read()!.state, StateChoice.free);
   });
 
   test('the defaults round-trip like any other choice', () async {
@@ -71,24 +47,52 @@ void main() {
 
     await store.write(ScanSettings.defaults);
 
-    final read = store.read();
-    expect(read, isNotNull);
-    expect(read!.sortMode, ScanSettings.defaults.sortMode);
-    expect(read.sortOrder, ScanSettings.defaults.sortOrder);
-    expect(read.marks, defaultFilterMarks);
+    expect(store.read(), ScanSettings.defaults);
   });
 
-  test('unreadable stored values fall back to the defaults', () async {
+  test('the old mark keys are no choice of ours: ignored and swept', () async {
+    // Leftovers from the four-row era seed the store: they neither stand
+    // in for a choice on read…
     final store = await _store({
-      'sort_mode': 'bySize',
-      'sort_order': 'sideways',
-      'filter_libres': 'maybe',
+      'filter_computeLab': 'include',
+      'filter_libres': 'exclude',
+      'filter_last15': 'include',
     });
 
-    final read = store.read();
-    expect(read, isNotNull);
-    expect(read!.sortMode, SortMode.timeThenRoom);
-    expect(read.sortOrder, SortOrder.ascending);
-    expect(read.marks, isEmpty);
+    expect(store.read(), isNull);
+
+    // …nor survive a write.
+    await store.write(ScanSettings.defaults);
+    expect(store.read(), ScanSettings.defaults);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getKeys().where((key) => key.startsWith('filter_')), isEmpty);
+  });
+
+  test('unreadable stored values fall back to their defaults', () async {
+    // An enum name this version no longer knows — a renamed value from a
+    // future or past release — must not fail the launch.
+    final store = await _store({
+      'sort_mode': 'no-such-mode',
+      'sort_order': 'no-such-order',
+      'room_type': 'no-such-room-type',
+      'view': 'no-such-view',
+      'state': 'no-such-state',
+    });
+
+    expect(store.read(), ScanSettings.defaults);
+  });
+
+  test('an unknown value falls back on its own, not for the rest', () async {
+    final store = await _store({
+      'sort_mode': SortMode.roomThenTime.name,
+      'room_type': 'no-such-room-type',
+    });
+
+    final settings = store.read()!;
+    expect(settings.sortMode, SortMode.roomThenTime);
+    expect(settings.sortOrder, ScanSettings.defaults.sortOrder);
+    expect(settings.roomType, ScanSettings.defaults.roomType);
+    expect(settings.view, ScanSettings.defaults.view);
+    expect(settings.state, ScanSettings.defaults.state);
   });
 }

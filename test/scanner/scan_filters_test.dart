@@ -2,33 +2,140 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sched_scan/scanner/models/scan_filters.dart';
 
 void main() {
-  test('the mark cycle walks none → include → exclude → none', () {
-    expect(TypeMark.none.next, TypeMark.include);
-    expect(TypeMark.include.next, TypeMark.exclude);
-    expect(TypeMark.exclude.next, TypeMark.none);
-  });
-
-  test('a mark keeps, drops or ignores what its row matches', () {
-    expect(passesMark(TypeMark.none, true), isTrue);
-    expect(passesMark(TypeMark.none, false), isTrue);
-    expect(passesMark(TypeMark.include, true), isTrue);
-    expect(passesMark(TypeMark.include, false), isFalse);
-    expect(passesMark(TypeMark.exclude, true), isFalse);
-    expect(passesMark(TypeMark.exclude, false), isTrue);
-  });
-
-  test('the defaults: labs in, free out, window in — and the labels', () {
-    expect(defaultFilterMarks, {
-      FilterRow.computeLab: TypeMark.include,
-      FilterRow.libres: TypeMark.exclude,
-      FilterRow.last15: TypeMark.include,
-    });
+  test('the sections read in the order the menu lists them', () {
     expect(
-      [for (final row in FilterRow.values) row.label],
-      ['Laboratorio de Cómputo', 'Libres', 'Últimos 15 min', 'Ahora'],
+      [for (final choice in RoomTypeChoice.values) choice.label],
+      ['Todas las aulas', 'Laboratorios', 'Solo aulas'],
     );
-    // The now row is opt-in: untouched means absent from the marks.
-    expect(defaultFilterMarks[FilterRow.now], isNull);
+    expect(
+      [for (final choice in ViewChoice.values) choice.label],
+      ['Todo', 'Ahora', 'A punto de comenzar'],
+    );
+    expect(
+      [for (final choice in StateChoice.values) choice.label],
+      ['Libres y ocupadas', 'Solo libres', 'Solo ocupadas'],
+    );
+  });
+
+  test('a choice advances one step and wraps back to its first', () {
+    expect(RoomTypeChoice.all.next, RoomTypeChoice.labs);
+    expect(RoomTypeChoice.labs.next, RoomTypeChoice.rooms);
+    expect(RoomTypeChoice.rooms.next, RoomTypeChoice.all);
+
+    expect(ViewChoice.all.next, ViewChoice.now);
+    expect(ViewChoice.now.next, ViewChoice.soon);
+    expect(ViewChoice.soon.next, ViewChoice.all);
+
+    expect(StateChoice.all.next, StateChoice.free);
+    expect(StateChoice.free.next, StateChoice.busy);
+    expect(StateChoice.busy.next, StateChoice.all);
+  });
+
+  test('the imminent view looks fifteen minutes ahead', () {
+    expect(upcomingWindow, const Duration(minutes: 15));
+  });
+
+  group('passesRoomType', () {
+    test('every room, the labs only, or the rest only', () {
+      expect(passesRoomType(RoomTypeChoice.all, room: 'AULA A-102'), isTrue);
+      expect(
+        passesRoomType(
+          RoomTypeChoice.all,
+          room: 'B-101 (LABORATORIO DE CÓMPUTO)',
+        ),
+        isTrue,
+      );
+
+      expect(
+        passesRoomType(
+          RoomTypeChoice.labs,
+          room: 'B-101 (LABORATORIO DE CÓMPUTO)',
+        ),
+        isTrue,
+      );
+      expect(passesRoomType(RoomTypeChoice.labs, room: 'C-203'), isTrue);
+      expect(passesRoomType(RoomTypeChoice.labs, room: 'AULA A-102'), isFalse);
+      expect(
+        passesRoomType(RoomTypeChoice.labs, room: 'LOSA DEPORTIVA'),
+        isFalse,
+      );
+
+      expect(passesRoomType(RoomTypeChoice.rooms, room: 'AULA A-102'), isTrue);
+      expect(
+        passesRoomType(RoomTypeChoice.rooms, room: 'LOSA DEPORTIVA'),
+        isTrue,
+      );
+      expect(
+        passesRoomType(
+          RoomTypeChoice.rooms,
+          room: 'B-101 (LABORATORIO DE CÓMPUTO)',
+        ),
+        isFalse,
+      );
+      expect(passesRoomType(RoomTypeChoice.rooms, room: 'C-203'), isFalse);
+    });
+  });
+
+  group('passesView', () {
+    final now = DateTime(2026, 1, 1, 10, 5);
+
+    test('todo keeps every slot, whenever it runs', () {
+      expect(
+        passesView(ViewChoice.all, start: '07:00', end: '07:15', now: now),
+        isTrue,
+      );
+      expect(
+        passesView(ViewChoice.all, start: null, end: null, now: now),
+        isTrue,
+      );
+      expect(
+        passesView(ViewChoice.all, start: '20:00', end: '21:00', now: now),
+        isTrue,
+      );
+    });
+
+    test('ahora keeps the sessions underway, like isOngoing', () {
+      expect(
+        passesView(ViewChoice.now, start: '09:30', end: '11:30', now: now),
+        isTrue,
+      );
+      expect(
+        passesView(ViewChoice.now, start: '10:06', end: '12:00', now: now),
+        isFalse,
+      );
+      expect(
+        passesView(ViewChoice.now, start: null, end: null, now: now),
+        isFalse,
+      );
+    });
+
+    test('a punto de comenzar keeps the imminent ones, like isImminent', () {
+      expect(
+        passesView(ViewChoice.soon, start: '10:15', end: '11:00', now: now),
+        isTrue,
+      );
+      expect(
+        passesView(ViewChoice.soon, start: '09:30', end: '11:30', now: now),
+        isFalse,
+      );
+      expect(
+        passesView(ViewChoice.soon, start: null, end: null, now: now),
+        isFalse,
+      );
+    });
+  });
+
+  group('passesState', () {
+    test('both kinds, the free slots only, or the booked ones only', () {
+      expect(passesState(StateChoice.all, isFree: true), isTrue);
+      expect(passesState(StateChoice.all, isFree: false), isTrue);
+
+      expect(passesState(StateChoice.free, isFree: true), isTrue);
+      expect(passesState(StateChoice.free, isFree: false), isFalse);
+
+      expect(passesState(StateChoice.busy, isFree: true), isFalse);
+      expect(passesState(StateChoice.busy, isFree: false), isTrue);
+    });
   });
 
   group('isComputeLab', () {
@@ -64,25 +171,6 @@ void main() {
       expect(isComputeLab('LOSA DEPORTIVA'), isFalse);
       expect(isComputeLab('ESTUDIO 1'), isFalse);
       expect(isComputeLab('sin código de aula'), isFalse);
-    });
-  });
-
-  group('isStale', () {
-    final now = DateTime(2026, 1, 1, 10, 5);
-
-    test('more than fifteen minutes ago is stale, the rest is not', () {
-      expect(isStale('09:30', now), isTrue); // 35 minutes ago
-      expect(isStale('09:49', now), isTrue); // 16 — a minute too old
-      expect(isStale('09:50', now), isFalse); // exactly fifteen — still in
-      expect(isStale('10:00', now), isFalse); // five minutes ago
-      expect(isStale('10:05', now), isFalse); // just started
-      expect(isStale('20:00', now), isFalse); // yet to come
-    });
-
-    test('no start time, or no parseable one, never ages', () {
-      expect(isStale(null, now), isFalse);
-      expect(isStale('—', now), isFalse);
-      expect(isStale('Recuperación', now), isFalse);
     });
   });
 
@@ -122,6 +210,27 @@ void main() {
       expect(isOngoing('22:00', '06:00', small), isTrue); // past midnight
       expect(isOngoing('22:00', '06:00', morning), isFalse); // closed
       expect(isOngoing('22:00', '06:00', evening), isFalse); // not yet
+    });
+  });
+
+  group('isImminent', () {
+    final now = DateTime(2026, 1, 1, 10, 5);
+
+    test('a start within the next fifteen minutes is imminent', () {
+      expect(isImminent('10:06', now), isTrue); // a minute away
+      expect(isImminent('10:15', now), isTrue); // ten
+      expect(isImminent('10:20', now), isTrue); // exactly fifteen — still in
+      expect(isImminent('10:21', now), isFalse); // a minute too far
+      expect(isImminent('11:00', now), isFalse); // much later
+    });
+
+    test('the clock and the start are both needed, strictly future', () {
+      expect(isImminent('10:05', now), isFalse); // the clock itself: under way
+      expect(isImminent('10:00', now), isFalse); // already started
+      expect(isImminent('09:30', now), isFalse); // long over
+      expect(isImminent(null, now), isFalse);
+      expect(isImminent('—', now), isFalse);
+      expect(isImminent('Recuperación', now), isFalse);
     });
   });
 }

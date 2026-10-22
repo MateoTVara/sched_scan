@@ -1,63 +1,217 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sched_scan/scanner/models/preset.dart';
 import 'package:sched_scan/scanner/models/scan_filters.dart';
 import 'package:sched_scan/scanner/models/sort_mode.dart';
 import 'package:sched_scan/scanner/scanner_viewmodel.dart';
+import 'package:sched_scan/scanner/settings_store.dart';
 import 'package:sched_scan/scanner/sort_menu.dart';
 
 /// Never disposed: closing the ML Kit recognizer reaches a plugin that does
 /// not exist on the host, and no OCR runs in these tests to allocate one.
 ScannerViewModel _viewModel() => ScannerViewModel();
 
-/// The row of the criterion, keyed the way `SortMenu` keys it.
-Finder _row(SortMode mode) => find.byKey(ValueKey('sort-$mode'));
+/// Opens the sheet over [viewModel] on a tall surface, so the whole
+/// `Filtros` body — four sections' worth of rows — fits without
+/// scrolling and every row can be tapped where it lies.
+Future<void> _openMenu(WidgetTester tester, ScannerViewModel viewModel) async {
+  tester.view.physicalSize = const Size(1080, 2280);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
 
-void main() {
-  testWidgets('lists the criteria, flips the active one and switches with '
-      'its direction intact', (tester) async {
-    final viewModel = _viewModel();
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => Center(
-              child: ElevatedButton(
-                onPressed: () => showSortMenu(context, viewModel),
-                child: const Text('Abrir'),
-              ),
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => Center(
+            child: ElevatedButton(
+              onPressed: () => showSortMenu(context, viewModel),
+              child: const Text('Abrir'),
             ),
           ),
         ),
       ),
-    );
+    ),
+  );
 
-    await tester.tap(find.text('Abrir'));
-    await tester.pumpAndSettle();
+  await tester.tap(find.text('Abrir'));
+  await tester.pumpAndSettle();
+}
 
-    // The sheet is up over a dimmed scrim with its two-tab header; Orden —
-    // where the `Ordenar` button points — opens first, listing both
-    // criteria: the default one in effect, arrowed upwards, the other plain.
+/// The row of the criterion, keyed the way `SortMenu` keys it.
+Finder _row(SortMode mode) => find.byKey(ValueKey('sort-$mode'));
+
+/// One preset row, keyed by its name.
+Finder _preset(String name) => find.byKey(ValueKey('preset-$name'));
+
+/// The `Personalizado` row.
+Finder _custom() => find.byKey(const ValueKey('preset-custom'));
+
+/// One radio option of a filter section: [section] is `roomType`, `view`
+/// or `state`, [name] the enum value's.
+Finder _choice(String section, String name) =>
+    find.byKey(ValueKey('choice-$section-$name'));
+
+/// Whether the row carries the tick — the radio sections' state mark.
+bool _ticked(WidgetTester tester, Finder row) => find
+    .descendant(of: row, matching: find.byIcon(Icons.check))
+    .evaluate()
+    .isNotEmpty;
+
+void main() {
+  testWidgets('opens on Presets: the three rows, the lit Personalizado and no '
+      'filters yet', (tester) async {
+    final viewModel = _viewModel();
+
+    await _openMenu(tester, viewModel);
+
+    // The sheet is up over a dimmed scrim with its two-tab header,
+    // Presets first — and the whole combination list is there.
     expect(find.byType(BottomSheet), findsOneWidget);
     expect(find.byType(TabBar), findsOneWidget);
-    expect(find.text('Orden'), findsOneWidget);
+    expect(find.text('Presets'), findsOneWidget);
     expect(find.text('Filtros'), findsOneWidget);
-    expect(find.text('Por sala y hora'), findsOneWidget);
-    expect(find.text('Por hora y sala'), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_downward), findsNothing);
-    expect(find.byTooltip('Ascendente'), findsOneWidget);
+    for (final preset in presets) {
+      expect(_preset(preset.name), findsOneWidget);
+      expect(find.text(preset.description), findsOneWidget);
+      expect(tester.widget<ListTile>(_preset(preset.name)).selected, isFalse);
+    }
+    expect(_custom(), findsOneWidget);
+    // The defaults match no preset, so the custom state is the one
+    // lit — ticked, and its row tinted.
+    expect(tester.widget<ListTile>(_custom()).selected, isTrue);
+    expect(_ticked(tester, _custom()), isTrue);
+
     // The other tab's body is not built until its tab is asked for.
-    expect(
-      find.text('Un toque incluye, dos excluye, tres limpia.'),
-      findsNothing,
-    );
+    expect(_row(SortMode.timeThenRoom), findsNothing);
+    expect(_choice('roomType', 'labs'), findsNothing);
     expect(
       find.byWidgetPredicate(
         (widget) => widget is ModalBarrier && widget.color == Colors.black54,
       ),
       findsWidgets,
     );
+  });
+
+  testWidgets('one tap applies a preset, lights it and keeps the sheet up', (
+    tester,
+  ) async {
+    final viewModel = _viewModel();
+
+    await _openMenu(tester, viewModel);
+
+    await tester.tap(_preset(presets[0].name));
+    await tester.pump();
+
+    // The whole choice — sort and the three sections — lands at once,
+    // and the row takes the tick the custom row just lost.
+    expect(viewModel.choice, presets[0].settings);
+    expect(viewModel.activePreset, presets[0]);
+    expect(viewModel.roomType, RoomTypeChoice.rooms);
+    expect(viewModel.view, ViewChoice.now);
+    expect(viewModel.state, StateChoice.free);
+    expect(_ticked(tester, _preset(presets[0].name)), isTrue);
+    expect(tester.widget<ListTile>(_preset(presets[0].name)).selected, isTrue);
+    expect(_ticked(tester, _custom()), isFalse);
+    expect(tester.widget<ListTile>(_custom()).selected, isFalse);
+
+    // The sheet stays open for the next choice.
+    expect(find.byType(BottomSheet), findsOneWidget);
+
+    await tester.tap(_preset(presets[2].name));
+    await tester.pump();
+
+    expect(viewModel.choice, presets[2].settings);
+    expect(viewModel.activePreset, presets[2]);
+    expect(_ticked(tester, _preset(presets[2].name)), isTrue);
+    expect(_ticked(tester, _preset(presets[0].name)), isFalse);
+    expect(find.byType(BottomSheet), findsOneWidget);
+  });
+
+  testWidgets('Personalizado applies nothing and jumps to Filtros', (
+    tester,
+  ) async {
+    final viewModel = _viewModel();
+
+    await _openMenu(tester, viewModel);
+
+    await tester.tap(_custom());
+    await tester.pumpAndSettle();
+
+    // The tab swapped, and the choice underneath did not move an inch —
+    // the row only names where the combination stands.
+    expect(viewModel.choice, ScanSettings.defaults);
+    expect(_custom(), findsNothing);
+    expect(_preset(presets[0].name), findsNothing);
+    // The sort criteria and the four section titles of the Filtros tab.
+    expect(find.text('Orden'), findsOneWidget);
+    expect(find.text('Tipo de aula'), findsOneWidget);
+    expect(find.text('Qué ver'), findsOneWidget);
+    expect(find.text('Estado'), findsOneWidget);
+    expect(_row(SortMode.timeThenRoom), findsOneWidget);
+    expect(_row(SortMode.roomThenTime), findsOneWidget);
+  });
+
+  testWidgets('Filtros lists the criteria and the radio sections', (
+    tester,
+  ) async {
+    final viewModel = _viewModel();
+
+    await _openMenu(tester, viewModel);
+    await tester.tap(find.text('Filtros'));
+    await tester.pumpAndSettle();
+
+    // Both criteria: the default one in effect, arrowed upwards, the
+    // other plain.
+    expect(_row(SortMode.timeThenRoom), findsOneWidget);
+    expect(_row(SortMode.roomThenTime), findsOneWidget);
+    expect(
+      find.descendant(
+        of: _row(SortMode.timeThenRoom),
+        matching: find.byIcon(Icons.arrow_upward),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.arrow_downward), findsNothing);
+    expect(find.byTooltip('Ascendente'), findsOneWidget);
+
+    // Every option of every section, one tick per section — exactly the
+    // defaults: labs, whole day, booked only.
+    for (final choice in RoomTypeChoice.values) {
+      expect(_choice('roomType', choice.name), findsOneWidget);
+      expect(
+        _ticked(tester, _choice('roomType', choice.name)),
+        choice == RoomTypeChoice.labs,
+      );
+    }
+    for (final choice in ViewChoice.values) {
+      expect(_choice('view', choice.name), findsOneWidget);
+      expect(
+        _ticked(tester, _choice('view', choice.name)),
+        choice == ViewChoice.all,
+      );
+    }
+    for (final choice in StateChoice.values) {
+      expect(_choice('state', choice.name), findsOneWidget);
+      expect(
+        _ticked(tester, _choice('state', choice.name)),
+        choice == StateChoice.busy,
+      );
+    }
+    // The old one-tap hint went with the marks.
+    expect(
+      find.text('Un toque incluye, dos excluye, tres limpia.'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('tapping the criterion in effect flips its direction, the '
+      'other one switches over', (tester) async {
+    final viewModel = _viewModel();
+
+    await _openMenu(tester, viewModel);
+    await tester.tap(find.text('Filtros'));
+    await tester.pumpAndSettle();
 
     // Tapping the criterion that is already in effect flips its direction.
     await tester.tap(_row(SortMode.timeThenRoom));
@@ -65,12 +219,14 @@ void main() {
 
     expect(viewModel.sortMode, SortMode.timeThenRoom);
     expect(viewModel.sortOrder, SortOrder.descending);
-    expect(find.byIcon(Icons.arrow_downward), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_upward), findsNothing);
+    expect(
+      find.descendant(
+        of: _row(SortMode.timeThenRoom),
+        matching: find.byIcon(Icons.arrow_downward),
+      ),
+      findsOneWidget,
+    );
     expect(find.byTooltip('Descendente'), findsOneWidget);
-
-    // The sheet stays open for the next choice.
-    expect(find.byType(TabBar), findsOneWidget);
 
     // Tapping the other criterion takes it over with the direction as it
     // is — arrow and all.
@@ -80,267 +236,136 @@ void main() {
     expect(viewModel.sortMode, SortMode.roomThenTime);
     expect(viewModel.sortOrder, SortOrder.descending);
     expect(find.byIcon(Icons.arrow_downward), findsOneWidget);
-    expect(find.byType(TabBar), findsOneWidget);
+    expect(find.byType(BottomSheet), findsOneWidget);
 
     // And the row now in effect flips it back.
     await tester.tap(_row(SortMode.roomThenTime));
     await tester.pump();
 
     expect(viewModel.sortOrder, SortOrder.ascending);
-    expect(viewModel.sortMode, SortMode.roomThenTime);
     expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
     expect(find.byIcon(Icons.arrow_downward), findsNothing);
-
-    // Tapping the dimmed part of the screen dismisses the sheet.
-    await tester.tapAt(const Offset(20, 20));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(BottomSheet), findsNothing);
-    expect(find.byType(TabBar), findsNothing);
-    expect(viewModel.sortMode, SortMode.roomThenTime);
-    expect(viewModel.sortOrder, SortOrder.ascending);
   });
 
-  testWidgets('the filter rows cycle include → close → none → include', (
-    tester,
-  ) async {
+  testWidgets('picking an option moves the tick, and picking it twice '
+      'changes nothing', (tester) async {
     final viewModel = _viewModel();
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => Center(
-              child: ElevatedButton(
-                onPressed: () => showSortMenu(context, viewModel),
-                child: const Text('Abrir'),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-
-    await tester.tap(find.text('Abrir'));
-    await tester.pumpAndSettle();
-
-    // Orden opens first — where the `Ordenar` button points — so the
-    // four filter rows wait on their own tab.
-    expect(find.text('Por sala y hora'), findsOneWidget);
-    expect(find.text('Por hora y sala'), findsOneWidget);
-    expect(
-      find.text('Un toque incluye, dos excluye, tres limpia.'),
-      findsNothing,
-    );
-
-    // Over on Filtros: the fixed rows, each in its default state — labs
-    // and window ticked, Libres crossed, the now row untouched — and no
-    // sign of the criteria's rows: one body at a time.
+    await _openMenu(tester, viewModel);
     await tester.tap(find.text('Filtros'));
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('Un toque incluye, dos excluye, tres limpia.'),
-      findsOneWidget,
-    );
-    expect(find.text('Por sala y hora'), findsNothing);
-    for (final row in FilterRow.values) {
-      expect(find.byKey(ValueKey('filter-${row.name}')), findsOneWidget);
-      expect(find.text(row.label), findsOneWidget);
-    }
-    expect(viewModel.filters.marks, defaultFilterMarks);
-
-    final labs = find.byKey(ValueKey('filter-computeLab'));
-    final free = find.byKey(ValueKey('filter-libres'));
-    final window = find.byKey(ValueKey('filter-last15'));
-    final now = find.byKey(ValueKey('filter-now'));
-    expect(
-      find.descendant(of: labs, matching: find.byIcon(Icons.check)),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: free, matching: find.byIcon(Icons.close)),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: window, matching: find.byIcon(Icons.check)),
-      findsOneWidget,
-    );
-    // The now row is opt-in: it starts untouched, with no icon at all.
-    expect(
-      find.descendant(of: now, matching: find.byIcon(Icons.check)),
-      findsNothing,
-    );
-    expect(
-      find.descendant(of: now, matching: find.byIcon(Icons.close)),
-      findsNothing,
-    );
-
-    // One tap on the labs row walks it include → exclude: the tick turns
-    // into a cross, in the viewmodel and on screen.
-    await tester.tap(labs);
+    // Radio-style: one tap *selects* the option, in the viewmodel and on
+    // screen — the tick leaves the row it was on.
+    await tester.tap(_choice('roomType', 'all'));
     await tester.pump();
 
-    expect(viewModel.filters.stateOf(FilterRow.computeLab), TypeMark.exclude);
-    expect(
-      find.descendant(of: labs, matching: find.byIcon(Icons.close)),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: labs, matching: find.byIcon(Icons.check)),
-      findsNothing,
-    );
+    expect(viewModel.roomType, RoomTypeChoice.all);
+    expect(_ticked(tester, _choice('roomType', 'all')), isTrue);
+    expect(_ticked(tester, _choice('roomType', 'labs')), isFalse);
 
-    // The mark belongs to the viewmodel: a tab away keeps it — while the
-    // icons go with the body that carries them — and a tab back brings
-    // the cross right where it was.
-    await tester.tap(find.text('Orden'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Por sala y hora'), findsOneWidget);
-    expect(find.byIcon(Icons.check), findsNothing);
-    expect(find.byIcon(Icons.close), findsNothing);
-    expect(viewModel.filters.stateOf(FilterRow.computeLab), TypeMark.exclude);
-
-    await tester.tap(find.text('Filtros'));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.descendant(of: labs, matching: find.byIcon(Icons.close)),
-      findsOneWidget,
-    );
-
-    // A second tap takes the cross off — none, the row with no icon at
-    // all — while the rows never tapped keep theirs.
-    await tester.tap(labs);
+    await tester.tap(_choice('view', 'now'));
     await tester.pump();
 
-    expect(viewModel.filters.stateOf(FilterRow.computeLab), TypeMark.none);
-    expect(
-      find.descendant(of: labs, matching: find.byIcon(Icons.close)),
-      findsNothing,
-    );
-    expect(
-      find.descendant(of: labs, matching: find.byIcon(Icons.check)),
-      findsNothing,
-    );
-    expect(
-      find.descendant(of: free, matching: find.byIcon(Icons.close)),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: window, matching: find.byIcon(Icons.check)),
-      findsOneWidget,
-    );
+    expect(viewModel.view, ViewChoice.now);
+    expect(_ticked(tester, _choice('view', 'now')), isTrue);
+    expect(_ticked(tester, _choice('view', 'all')), isFalse);
 
-    // A third walks it back to the default include — sheet still open
-    // for the next.
-    await tester.tap(labs);
+    await tester.tap(_choice('state', 'free'));
     await tester.pump();
 
-    expect(viewModel.filters.stateOf(FilterRow.computeLab), TypeMark.include);
-    expect(
-      find.descendant(of: labs, matching: find.byIcon(Icons.check)),
-      findsOneWidget,
-    );
+    expect(viewModel.state, StateChoice.free);
+    expect(_ticked(tester, _choice('state', 'free')), isTrue);
+    expect(_ticked(tester, _choice('state', 'busy')), isFalse);
     expect(find.byType(BottomSheet), findsOneWidget);
-    expect(find.text('Filtros'), findsOneWidget);
-    expect(viewModel.filters.marks, defaultFilterMarks);
 
-    // The now row walks its own cycle from none — tick, cross, clean —
-    // with the sheet open through all of it, and ends where it started.
-    await tester.tap(now);
+    // The row already in effect is a no-op — there is no third state to
+    // cycle into.
+    await tester.tap(_choice('roomType', 'all'));
     await tester.pump();
 
-    expect(viewModel.filters.stateOf(FilterRow.now), TypeMark.include);
-    expect(
-      find.descendant(of: now, matching: find.byIcon(Icons.check)),
-      findsOneWidget,
-    );
-
-    await tester.tap(now);
-    await tester.pump();
-
-    expect(viewModel.filters.stateOf(FilterRow.now), TypeMark.exclude);
-    expect(
-      find.descendant(of: now, matching: find.byIcon(Icons.close)),
-      findsOneWidget,
-    );
-
-    await tester.tap(now);
-    await tester.pump();
-
-    expect(viewModel.filters.stateOf(FilterRow.now), TypeMark.none);
-    expect(viewModel.filters.marks, defaultFilterMarks);
+    expect(viewModel.roomType, RoomTypeChoice.all);
+    expect(_ticked(tester, _choice('roomType', 'all')), isTrue);
     expect(find.byType(BottomSheet), findsOneWidget);
   });
 
-  testWidgets('restores the sort and the marks from either tab', (
-    tester,
-  ) async {
+  testWidgets('a choice survives a tab away and back, the tick going '
+      'with its body', (tester) async {
     final viewModel = _viewModel();
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => Center(
-              child: ElevatedButton(
-                onPressed: () => showSortMenu(context, viewModel),
-                child: const Text('Abrir'),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-
-    await tester.tap(find.text('Abrir'));
+    await _openMenu(tester, viewModel);
+    await tester.tap(find.text('Filtros'));
     await tester.pumpAndSettle();
 
-    // Scattered from the defaults on both tabs: the criterion in effect
-    // flipped to descending…
+    await tester.tap(_choice('state', 'free'));
+    await tester.pump();
+
+    expect(viewModel.state, StateChoice.free);
+
+    // A tab away: the tick goes with the body it was drawn in, the
+    // choice stays in the viewmodel.
+    await tester.tap(find.text('Presets'));
+    await tester.pumpAndSettle();
+
+    expect(_choice('state', 'free'), findsNothing);
+    expect(_ticked(tester, _custom()), isTrue);
+    expect(viewModel.state, StateChoice.free);
+    // Off every preset, so `Personalizado` is still the lit one.
+    expect(tester.widget<ListTile>(_custom()).selected, isTrue);
+
+    // And a tab back brings the tick right where it was.
+    await tester.tap(find.text('Filtros'));
+    await tester.pumpAndSettle();
+
+    expect(_ticked(tester, _choice('state', 'free')), isTrue);
+    expect(_ticked(tester, _choice('state', 'busy')), isFalse);
+    expect(viewModel.state, StateChoice.free);
+  });
+
+  testWidgets('restores the whole choice from either tab', (tester) async {
+    final viewModel = _viewModel();
+
+    await _openMenu(tester, viewModel);
+
+    // Scattered from the defaults on both tabs: a preset applied…
+    await tester.tap(_preset(presets[1].name));
+    await tester.pump();
+    expect(viewModel.choice, presets[1].settings);
+
+    // …and the direction flipped over on Filtros, which puts the
+    // combination off every preset again.
+    await tester.tap(find.text('Filtros'));
+    await tester.pumpAndSettle();
     await tester.tap(_row(SortMode.timeThenRoom));
     await tester.pump();
     expect(viewModel.sortOrder, SortOrder.descending);
-
-    // …and a filter row marked out.
-    await tester.tap(find.text('Filtros'));
-    await tester.pumpAndSettle();
-    final labs = find.byKey(ValueKey('filter-computeLab'));
-    await tester.tap(labs);
-    await tester.pump();
-    expect(viewModel.filters.stateOf(FilterRow.computeLab), TypeMark.exclude);
+    expect(viewModel.activePreset, isNull);
 
     // The restore button sits under the header, on offer whichever tab
     // is open.
-    final restore = find.byKey(ValueKey('restore-defaults'));
+    final restore = find.byKey(const ValueKey('restore-defaults'));
     expect(restore, findsOneWidget);
 
     await tester.tap(restore);
     await tester.pump();
 
-    // One tap gives both groups back, the sheet still up to show it —
-    // the crossed row ticked again, the marks the defaults.
-    expect(viewModel.sortMode, SortMode.timeThenRoom);
-    expect(viewModel.sortOrder, SortOrder.ascending);
-    expect(viewModel.filters.marks, defaultFilterMarks);
+    // One tap gives the whole choice back, the sheet still up to show it:
+    // every section ticked with its default and the criteria arrowed up.
+    expect(viewModel.choice, ScanSettings.defaults);
     expect(
-      find.descendant(of: labs, matching: find.byIcon(Icons.close)),
-      findsNothing,
-    );
-    expect(
-      find.descendant(of: labs, matching: find.byIcon(Icons.check)),
+      find.descendant(
+        of: _choice('roomType', 'labs'),
+        matching: find.byIcon(Icons.check),
+      ),
       findsOneWidget,
     );
-    expect(find.byType(BottomSheet), findsOneWidget);
-
-    // Over on Orden the restored criterion is the one in effect again,
-    // arrowed upwards — and the button came along to the other tab.
-    await tester.tap(find.text('Orden'));
-    await tester.pumpAndSettle();
-
-    expect(restore, findsOneWidget);
+    expect(
+      find.descendant(
+        of: _choice('state', 'busy'),
+        matching: find.byIcon(Icons.check),
+      ),
+      findsOneWidget,
+    );
     expect(
       find.descendant(
         of: _row(SortMode.timeThenRoom),
@@ -349,5 +374,35 @@ void main() {
       findsOneWidget,
     );
     expect(find.byIcon(Icons.arrow_downward), findsNothing);
+    expect(find.byType(BottomSheet), findsOneWidget);
+
+    // Over on Presets the defaults light `Personalizado` again — no
+    // preset fits them — and the button came along to the other tab.
+    await tester.tap(find.text('Presets'));
+    await tester.pumpAndSettle();
+
+    expect(restore, findsOneWidget);
+    expect(tester.widget<ListTile>(_custom()).selected, isTrue);
+    for (final preset in presets) {
+      expect(_ticked(tester, _preset(preset.name)), isFalse);
+    }
+  });
+
+  testWidgets('tapping the dimmed part of the screen dismisses the sheet', (
+    tester,
+  ) async {
+    final viewModel = _viewModel();
+
+    await _openMenu(tester, viewModel);
+    await tester.tap(_preset(presets[0].name));
+    await tester.pump();
+
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(find.byType(TabBar), findsNothing);
+    // What was chosen while the sheet was up stays chosen.
+    expect(viewModel.choice, presets[0].settings);
   });
 }

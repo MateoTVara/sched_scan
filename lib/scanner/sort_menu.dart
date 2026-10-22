@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:sched_scan/scanner/models/preset.dart';
 import 'package:sched_scan/scanner/models/scan_filters.dart';
 import 'package:sched_scan/scanner/models/sort_mode.dart';
 import 'package:sched_scan/scanner/scanner_viewmodel.dart';
 
 /// Opens the menu: a modal bottom sheet that slides in from the bottom
 /// over a dimmed scrim, leaving the card list readable behind it. Its
-/// header is a two-tab bar — `Orden` for the sort criteria, `Filtros` for
-/// the filter rows — so only one of the two groups is on screen at a
-/// time. Everything applies the moment it is tapped and the sheet stays
-/// open so the list can be compared while choosing; tap the scrim or drag
-/// the sheet away to dismiss.
+/// header is a two-tab bar — `Presets` for the one-tap combinations,
+/// `Filtros` for the sort and the three filter sections — so only one of
+/// the two groups is on screen at a time. Everything applies the moment
+/// it is tapped and the sheet stays open so the list can be compared
+/// while choosing; tap the scrim or drag the sheet away to dismiss.
 Future<void> showSortMenu(BuildContext context, ScannerViewModel viewModel) {
   return showModalBottomSheet<void>(
     context: context,
@@ -22,15 +23,16 @@ Future<void> showSortMenu(BuildContext context, ScannerViewModel viewModel) {
   );
 }
 
-/// The menu: a [TabBar] header over one body at a time — the [SortMode]
-/// rows under `Orden`, the four [FilterRow]s under `Filtros` — reading
+/// The menu: a [TabBar] header over one body at a time — the presets with
+/// their `Personalizado` row under `Presets`, the `Orden` sort criteria
+/// and the three radio-style filter sections under `Filtros` — reading
 /// the current choice from [viewModel] and writing it back through
-/// [ScannerViewModel.setSort] and [ScannerViewModel.cycleFilter], so the
-/// choices never live here. Under the header, on offer for both tabs, the
-/// restore button gives both groups back to their defaults
-/// ([ScannerViewModel.restoreDefaults]). The tab index is the only state
-/// the widget keeps: transient UI state, `Orden` first because that is
-/// what the `Ordenar` button means.
+/// [ScannerViewModel.applyPreset], [ScannerViewModel.setSort] and the
+/// [ScanFilters] setters, so the choices never live here. Under the
+/// header, on offer for both tabs, the restore button gives everything
+/// back to its defaults ([ScannerViewModel.restoreDefaults]). The tab
+/// index is the only state the widget keeps: transient UI state,
+/// `Presets` first because that is what a glance reaches for.
 class SortMenu extends StatefulWidget {
   const SortMenu({super.key, required this.viewModel});
 
@@ -50,7 +52,63 @@ class _SortMenuState extends State<SortMenu>
     super.dispose();
   }
 
-  /// One criterion: tinted and arrowed while it is the one in effect, plain
+  /// One preset: titled, described, ticked while it is the combination
+  /// in effect ([ScannerViewModel.activePreset]). One tap applies it and
+  /// the sheet stays open, so the list changes right behind it.
+  Widget _presetRow(BuildContext context, Preset preset) {
+    final theme = Theme.of(context);
+    final active = widget.viewModel.activePreset == preset;
+
+    return ListTile(
+      key: ValueKey('preset-${preset.name}'),
+      selected: active,
+      contentPadding: EdgeInsets.symmetric(horizontal: 16),
+      title: Text(preset.name),
+      subtitle: Text(
+        preset.description,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.outline,
+        ),
+      ),
+      trailing: active
+          ? Icon(Icons.check, color: theme.colorScheme.primary)
+          : null,
+      onTap: () => widget.viewModel.applyPreset(preset),
+    );
+  }
+
+  /// The `Personalizado` row: tinted and ticked whenever the current
+  /// combination matches no preset — the state a hand-mixed choice is in —
+  /// and the way over to it: one tap swaps to the `Filtros` tab, where it
+  /// is mixed. It applies nothing itself, because there is nothing to
+  /// apply; it only names where the choice stands.
+  Widget _customRow(BuildContext context) {
+    final theme = Theme.of(context);
+    final active = widget.viewModel.activePreset == null;
+
+    return ListTile(
+      key: const ValueKey('preset-custom'),
+      selected: active,
+      contentPadding: EdgeInsets.symmetric(horizontal: 16),
+      leading: Icon(
+        Icons.tune,
+        color: active ? theme.colorScheme.primary : null,
+      ),
+      title: const Text('Personalizado'),
+      subtitle: Text(
+        'Mezcla hecha a mano, en la pestaña Filtros',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.outline,
+        ),
+      ),
+      trailing: active
+          ? Icon(Icons.check, color: theme.colorScheme.primary)
+          : null,
+      onTap: () => _tab.animateTo(1),
+    );
+  }
+
+  /// One sort criterion: tinted and arrowed while it is the one in effect, plain
   /// otherwise. Tapping the row that is already in effect flips the
   /// direction; tapping the other one switches to it and leaves the
   /// direction alone.
@@ -91,30 +149,44 @@ class _SortMenuState extends State<SortMenu>
     SortMode.timeThenRoom => 'Por hora y sala',
   };
 
-  /// One filter row: tinted and ticked while marked in, red-crossed while
-  /// marked out, plain when it filters nothing. Every tap advances that
-  /// row's own mark, so the row is both the state and the control.
-  Widget _filterRow(BuildContext context, ScanFilters filters, FilterRow row) {
+  /// One option of a filter section: tinted and ticked while it is the
+  /// choice in effect, plain otherwise — radio-style, so one tap
+  /// *selects* [onSelect]'s option and tapping the one already in effect
+  /// changes nothing.
+  Widget _choiceRow(
+    BuildContext context, {
+    required String section,
+    required String name,
+    required String label,
+    required bool active,
+    required VoidCallback onSelect,
+  }) {
     final theme = Theme.of(context);
-    final state = filters.stateOf(row);
 
     return ListTile(
-      key: ValueKey('filter-${row.name}'),
-      selected: state == TypeMark.include,
+      key: ValueKey('choice-$section-$name'),
+      selected: active,
       contentPadding: EdgeInsets.symmetric(horizontal: 16),
-      title: Text(
-        row.label,
-        style: switch (state) {
-          TypeMark.exclude => TextStyle(color: theme.colorScheme.error),
-          _ => null,
-        },
+      title: Text(label),
+      trailing: active
+          ? Icon(Icons.check, color: theme.colorScheme.primary)
+          : null,
+      onTap: onSelect,
+    );
+  }
+
+  /// One section heading over its option rows.
+  Widget _sectionTitle(BuildContext context, String text) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: Text(
+        text,
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: theme.colorScheme.outline,
+        ),
       ),
-      trailing: switch (state) {
-        TypeMark.include => Icon(Icons.check, color: theme.colorScheme.primary),
-        TypeMark.exclude => Icon(Icons.close, color: theme.colorScheme.error),
-        TypeMark.none => null,
-      },
-      onTap: () => filters.cycle(row),
     );
   }
 
@@ -122,7 +194,7 @@ class _SortMenuState extends State<SortMenu>
   /// the body is swapped, not stacked.
   Widget _body(BuildContext context) {
     final children = switch (_tab.index) {
-      0 => [for (final mode in SortMode.values) _row(context, mode)],
+      0 => _presetRows(context),
       _ => _filterRows(context),
     };
 
@@ -139,18 +211,53 @@ class _SortMenuState extends State<SortMenu>
     );
   }
 
+  /// The presets in their shipped order, the `Personalizado` row closing
+  /// the list — the one that lights up when none of them is in effect.
+  List<Widget> _presetRows(BuildContext context) => [
+    for (final preset in presets) _presetRow(context, preset),
+    _customRow(context),
+  ];
+
+  /// The `Filtros` tab: the sort criteria under `Orden`, then one
+  /// radio-style row per option under each filter section. The old
+  /// one-tap-includes hint is gone with the marks — a row is simply the
+  /// choice it shows.
   List<Widget> _filterRows(BuildContext context) {
-    final theme = Theme.of(context);
     final filters = widget.viewModel.filters;
 
     return [
-      Text(
-        'Un toque incluye, dos excluye, tres limpia.',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.outline,
+      _sectionTitle(context, 'Orden'),
+      for (final mode in SortMode.values) _row(context, mode),
+      _sectionTitle(context, 'Tipo de aula'),
+      for (final choice in RoomTypeChoice.values)
+        _choiceRow(
+          context,
+          section: 'roomType',
+          name: choice.name,
+          label: choice.label,
+          active: filters.roomType == choice,
+          onSelect: () => filters.setRoomType(choice),
         ),
-      ),
-      for (final row in FilterRow.values) _filterRow(context, filters, row),
+      _sectionTitle(context, 'Qué ver'),
+      for (final choice in ViewChoice.values)
+        _choiceRow(
+          context,
+          section: 'view',
+          name: choice.name,
+          label: choice.label,
+          active: filters.view == choice,
+          onSelect: () => filters.setView(choice),
+        ),
+      _sectionTitle(context, 'Estado'),
+      for (final choice in StateChoice.values)
+        _choiceRow(
+          context,
+          section: 'state',
+          name: choice.name,
+          label: choice.label,
+          active: filters.state == choice,
+          onSelect: () => filters.setState(choice),
+        ),
     ];
   }
 
@@ -173,14 +280,14 @@ class _SortMenuState extends State<SortMenu>
                 TabBar(
                   controller: _tab,
                   tabs: const [
-                    Tab(text: 'Orden'),
+                    Tab(text: 'Presets'),
                     Tab(text: 'Filtros'),
                   ],
                 ),
-                // One button for both groups — sort and marks back to
-                // their defaults — sitting above the tab body, so it is
-                // on offer whichever tab is open. The sheet stays up, so
-                // the effect is right there to compare.
+                // One button for both tabs — the whole choice back to its
+                // defaults — sitting above the tab body, so it is on offer
+                // whichever tab is open. The sheet stays up, so the effect
+                // is right there to compare.
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
