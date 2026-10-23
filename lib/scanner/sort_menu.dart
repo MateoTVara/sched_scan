@@ -90,10 +90,6 @@ class _SortMenuState extends State<SortMenu>
       key: const ValueKey('preset-custom'),
       selected: active,
       contentPadding: EdgeInsets.symmetric(horizontal: 16),
-      leading: Icon(
-        Icons.tune,
-        color: active ? theme.colorScheme.primary : null,
-      ),
       title: const Text('Personalizado'),
       subtitle: Text(
         'Mezcla hecha a mano, en la pestaña Filtros',

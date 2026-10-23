@@ -51,4 +51,4 @@ app.*.map.json
 /.direnv
 /result
 /temp
-/test/fixtures/sample.pdf
+/test/fixtures/sample_??.pdf

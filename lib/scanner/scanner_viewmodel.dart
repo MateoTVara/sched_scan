@@ -1,6 +1,5 @@
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:sched_scan/scanner/models/preset.dart';
 import 'package:sched_scan/scanner/models/scan_filters.dart';
 import 'package:sched_scan/scanner/models/section_filter.dart';
@@ -9,7 +8,6 @@ import 'package:sched_scan/scanner/settings_store.dart';
 import 'package:sched_scan/schedule/models/entry_section.dart';
 import 'package:sched_scan/schedule/models/schedule_entry.dart';
 import 'package:sched_scan/schedule/models/schedule_line.dart';
-import 'package:sched_scan/schedule/models/schedule_source.dart';
 import 'package:sched_scan/schedule/models/schedule_word.dart';
 import 'package:sched_scan/schedule/schedule_parser.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
@@ -37,9 +35,6 @@ class ScannerViewModel extends ChangeNotifier {
        _settings = store,
        _choice = stored ?? ScanSettings.defaults;
 
-  final _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-  // final _parser = ScheduleParser();
-
   final DateTime Function() _clock;
 
   /// Where the choice is written back on every change; none in tests that
@@ -50,9 +45,9 @@ class ScannerViewModel extends ChangeNotifier {
   String? get recognizedText => _recognizedText;
 
   /// Every parsed PDF entry in table order, free slots included; empty for
-  /// image scans and for PDFs whose text could not be split into rows (the
-  /// raw text then stands in). This, not the section lists, is the signal
-  /// that the parse worked: a document whose slots are all free still counts.
+  /// PDFs whose text could not be split into rows (the raw text then
+  /// stands in). This, not the section lists, is the signal that the parse
+  /// worked: a document whose slots are all free still counts.
   List<ScheduleEntry> _entries = const [];
   List<ScheduleEntry> get entries => _entries;
 
@@ -114,8 +109,8 @@ class ScannerViewModel extends ChangeNotifier {
   /// Applies a preset in one tap: sort and all three sections at once.
   void applyPreset(Preset preset) => _adoptChoice(preset.settings);
 
-  /// The choice back to the defaults — time-then-room ascending, the labs'
-  /// whole day, booked slots only. The chip selection is left alone:
+  /// The choice back to the defaults — time-then-room ascending, the labs
+  /// starting soon, booked slots only. The chip selection is left alone:
   /// [clearSelection] is the way to empty that.
   void restoreDefaults() => _adoptChoice(ScanSettings.defaults);
 
@@ -276,49 +271,28 @@ class ScannerViewModel extends ChangeNotifier {
   bool _isScanning = false;
   bool get isScanning => _isScanning;
 
-  @override
-  void dispose() {
-    _textRecognizer.close();
-    super.dispose();
-  }
-
-  Future<void> scan(ScheduleSource? source) async {
-    if (source == null) return;
+  /// Reads [file]'s text layer off the UI thread and turns it into cards.
+  /// The parse is the expensive part, so it runs in [compute]; the
+  /// grouping below is cheap and needs the viewmodel's current choice, so
+  /// it happens here.
+  Future<void> scan(XFile? file) async {
+    if (file == null) return;
 
     _isScanning = true;
     notifyListeners();
 
     try {
-      _recognizedText = switch (source) {
-        ScheduleImage(:final file) => await _scanImage(file),
-        SchedulePdf(:final file) => await _scanPdf(file),
-      };
+      _applyEntries(const []);
+
+      final bytes = await file.readAsBytes();
+      final result = await compute(_parsePdfInBackground, bytes);
+
+      _applyEntries(result.entries);
+      _recognizedText = result.text;
     } finally {
       _isScanning = false;
       notifyListeners();
     }
-  }
-
-  Future<String> _scanImage(XFile file) async {
-    _applyEntries(const []);
-
-    final input = InputImage.fromFilePath(file.path);
-    final result = await _textRecognizer.processImage(input);
-    return result.text;
-  }
-
-  Future<String> _scanPdf(XFile file) async {
-    _applyEntries(const []);
-
-    final bytes = await file.readAsBytes();
-    // The extraction and the parse are the expensive part, so they run off
-    // the UI thread; the grouping below is cheap and needs the viewmodel's
-    // current sort, so it happens here.
-    final result = await compute(_parsePdfInBackground, bytes);
-
-    _applyEntries(result.entries);
-
-    return result.text;
   }
 
   static List<ScheduleLine> _toScheduleLines(PdfTextExtractor extractor) {
