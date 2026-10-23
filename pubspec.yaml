@@ -1,7 +1,7 @@
 name: sched_scan
-description: "Schedule Scanner — pick a schedule as an image or PDF: on-device OCR for images, geometric parsing of PDFs into filterable reservation cards."
+description: "Schedule Scanner — pick a schedule as a PDF: geometric parsing of its text layer into filterable reservation cards."
 publish_to: 'none'
-version: 0.4.1+1
+version: 0.5.0+2
 
 environment:
   sdk: ^3.13.3
@@ -12,8 +12,6 @@ dependencies:
   file_picker: ^13.1.0
   flutter:
     sdk: flutter
-  google_mlkit_text_recognition: ^0.17.1
-  image_picker: ^1.2.3
   shared_preferences: ^2.5.6
   shared_preferences_android: ">=2.4.28 <2.5.0"
   sliver_tools: ^0.2.12

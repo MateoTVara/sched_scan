@@ -16,13 +16,17 @@ class ScanSettings {
   });
 
   /// What a fresh install starts from, and what
-  /// `ScannerViewModel.restoreDefaults` gives back: the labs' whole day,
-  /// booked slots only, earliest first.
+  /// `ScannerViewModel.restoreDefaults` gives back: the labs starting
+  /// soon, booked slots only, earliest first — the `Laboratorios por
+  /// empezar` preset's choice, so a fresh install opens already under a
+  /// named preset. Written out as a literal rather than read off
+  /// `presets[0]`: `preset.dart` imports this library, and the other way
+  /// round would be a cycle — `preset_test` pins the two together.
   static const defaults = ScanSettings(
     sortMode: SortMode.timeThenRoom,
     sortOrder: SortOrder.ascending,
     roomType: RoomTypeChoice.labs,
-    view: ViewChoice.all,
+    view: ViewChoice.soon,
     state: StateChoice.busy,
   );
 

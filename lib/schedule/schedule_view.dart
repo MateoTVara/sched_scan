@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sched_scan/schedule/schedule_viewmodel.dart';
 
 /// The app's opening prompt as slivers, shown while nothing has been picked
-/// yet. Once a source exists this view stands aside — the picked file gets
+/// yet. Once a file exists this view stands aside — the picked file gets
 /// no preview, `ScannerView` shows the scan instead.
 class ScheduleView extends StatelessWidget {
   final ScheduleViewModel viewModel;
@@ -14,10 +14,10 @@ class ScheduleView extends StatelessWidget {
     return ListenableBuilder(
       listenable: viewModel,
       builder: (context, _) {
-        // A source exists: no preview of the file — `main.dart` joins
+        // A file exists: no preview of it — `main.dart` joins
         // ScannerView in right after this sliver, and its spinner or
         // cards are the whole show.
-        if (viewModel.source != null) {
+        if (viewModel.file != null) {
           return const SliverToBoxAdapter(child: SizedBox.shrink());
         }
 

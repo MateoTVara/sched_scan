@@ -24,10 +24,23 @@ class Preset {
   final ScanSettings settings;
 }
 
-/// The presets on offer, in the order the menu lists them: the two free-
-/// now views first, then the labs about to start. Each is time-then-room
-/// ascending — a preset is a glance, and a glance reads in time order.
+/// The presets on offer, in the order the menu lists them: the labs about
+/// to start first — the app's default choice, so a fresh install opens
+/// already under it — then the free-now views, then the whole booked day.
+/// Each is time-then-room ascending — a preset is a glance, and a glance
+/// reads in time order.
 const List<Preset> presets = [
+  Preset(
+    name: 'Laboratorios por empezar',
+    description: 'Clases de laboratorio que empiezan en los próximos 15 min',
+    settings: ScanSettings(
+      sortMode: SortMode.timeThenRoom,
+      sortOrder: SortOrder.ascending,
+      roomType: RoomTypeChoice.labs,
+      view: ViewChoice.soon,
+      state: StateChoice.busy,
+    ),
+  ),
   Preset(
     name: 'Aulas libres ahora',
     description: 'Aulas sin clase en este momento',
@@ -51,13 +64,13 @@ const List<Preset> presets = [
     ),
   ),
   Preset(
-    name: 'Laboratorios por empezar',
-    description: 'Clases de laboratorio que empiezan en los próximos 15 min',
+    name: 'Todas no libres',
+    description: 'Todas las aulas con clase',
     settings: ScanSettings(
       sortMode: SortMode.timeThenRoom,
       sortOrder: SortOrder.ascending,
-      roomType: RoomTypeChoice.labs,
-      view: ViewChoice.soon,
+      roomType: RoomTypeChoice.all,
+      view: ViewChoice.all,
       state: StateChoice.busy,
     ),
   ),

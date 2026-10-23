@@ -9,7 +9,6 @@ import 'package:sched_scan/scanner/scanner_viewmodel.dart';
 import 'package:sched_scan/scanner/settings_store.dart';
 import 'package:sched_scan/schedule/models/entry_section.dart';
 import 'package:sched_scan/schedule/models/schedule_entry.dart';
-import 'package:sched_scan/schedule/models/schedule_source.dart';
 
 const _samplePath = 'test/fixtures/sample_01.pdf';
 
@@ -25,8 +24,8 @@ final _blockCode = RegExp(r'(?:^|\s)([A-Z])-\d');
 XFile _sample() =>
     XFile.fromData(File(_samplePath).readAsBytesSync(), name: 'schedule.pdf');
 
-/// Never disposed: closing the ML Kit recognizer reaches a plugin that does
-/// not exist on the host, and no OCR runs in these tests to allocate one.
+/// The viewmodel owns no platform resource, so these tests never dispose
+/// it — the factory just wires the clock and the store.
 ///
 /// The clock reads midnight; the time-bound views (`Ahora`, `A punto de
 /// comenzar`) are off by the default choice, so only the tests that ask
@@ -64,7 +63,7 @@ bool _isSorted(List<ScheduleEntry> slots, SortOrder order) {
 
 /// Walks the choice back to "nothing filters": every room, the whole
 /// day, both kinds of slot — so a test sees the selection's own effect
-/// instead of the defaults' (labs, whole day, booked only).
+/// instead of the defaults' (labs starting soon, booked only).
 void _noFilters(ScannerViewModel viewModel) {
   viewModel
     ..setRoomType(RoomTypeChoice.all)
@@ -90,10 +89,10 @@ ScannerViewModel _storedViewModel(_FakeSettings settings) =>
     ScannerViewModel(clock: () => DateTime(2026, 1, 1), settings: settings);
 
 void main() {
-  test('extracts the text layer from a pdf source', () async {
+  test('extracts the text layer from a pdf file', () async {
     final viewModel = _viewModel();
 
-    await viewModel.scan(SchedulePdf(_sample()));
+    await viewModel.scan(_sample());
 
     expect(viewModel.isScanning, isFalse);
     expect(viewModel.recognizedText, isNotNull);
@@ -103,7 +102,7 @@ void main() {
   test('keeps only the booked cards, rooms in table order', () async {
     final viewModel = _viewModel();
 
-    await viewModel.scan(SchedulePdf(_sample()));
+    await viewModel.scan(_sample());
     // The room grouping — this test reads the room names under each block.
     viewModel.setSort(SortMode.roomThenTime, SortOrder.ascending);
 
@@ -202,7 +201,7 @@ void main() {
   test('groups the booked pdf entries by block', () async {
     final viewModel = _viewModel();
 
-    await viewModel.scan(SchedulePdf(_sample()));
+    await viewModel.scan(_sample());
     // The room grouping — this test reads the room names under each block.
     viewModel.setSort(SortMode.roomThenTime, SortOrder.ascending);
 
@@ -259,7 +258,7 @@ void main() {
     () async {
       final viewModel = _viewModel();
 
-      await viewModel.scan(SchedulePdf(_sample()));
+      await viewModel.scan(_sample());
       // The choice off, so the pick's own effect is all that narrows here.
       _noFilters(viewModel);
 
@@ -291,13 +290,13 @@ void main() {
   test('a new scan forgets the previous selection', () async {
     final viewModel = _viewModel();
 
-    await viewModel.scan(SchedulePdf(_sample()));
+    await viewModel.scan(_sample());
     _noFilters(viewModel);
     viewModel.toggleSection(viewModel.sectionsByBlock.first.title);
     // Narrowed to just the pick.
     expect(viewModel.visibleSectionsByBlock, hasLength(1));
 
-    await viewModel.scan(SchedulePdf(_sample()));
+    await viewModel.scan(_sample());
 
     // The selection is emptied: no pick outlives its scan, so the new
     // scan starts back at the empty selection — every section still on
@@ -313,7 +312,7 @@ void main() {
     expect(viewModel.sortMode, SortMode.timeThenRoom);
     expect(viewModel.sortOrder, SortOrder.ascending);
 
-    await viewModel.scan(SchedulePdf(_sample()));
+    await viewModel.scan(_sample());
 
     expect(viewModel.sortMode, SortMode.timeThenRoom);
     expect(viewModel.sortOrder, SortOrder.ascending);
@@ -334,7 +333,7 @@ void main() {
   test('time-first sort groups a block under its start times', () async {
     final viewModel = _viewModel();
 
-    await viewModel.scan(SchedulePdf(_sample()));
+    await viewModel.scan(_sample());
     // Back to the room grouping first, so the switch below has a switch
     // to make.
     viewModel.setSort(SortMode.roomThenTime, SortOrder.ascending);
@@ -402,7 +401,7 @@ void main() {
   test('descending reverses the times, not the blocks or the rooms', () async {
     final viewModel = _viewModel();
 
-    await viewModel.scan(SchedulePdf(_sample()));
+    await viewModel.scan(_sample());
     // The room grouping first — its sub-headings are the room names the
     // descending check below compares against.
     viewModel.setSort(SortMode.roomThenTime, SortOrder.ascending);
@@ -453,7 +452,7 @@ void main() {
   test('the chip selection survives a sort change', () async {
     final viewModel = _viewModel();
 
-    await viewModel.scan(SchedulePdf(_sample()));
+    await viewModel.scan(_sample());
     _noFilters(viewModel);
     final titles = [
       for (final section in viewModel.sectionsByBlock) section.title,
@@ -479,10 +478,10 @@ void main() {
   test('a new scan keeps the sort', () async {
     final viewModel = _viewModel();
 
-    await viewModel.scan(SchedulePdf(_sample()));
+    await viewModel.scan(_sample());
     viewModel.setSort(SortMode.roomThenTime, SortOrder.descending);
 
-    await viewModel.scan(SchedulePdf(_sample()));
+    await viewModel.scan(_sample());
 
     // The choice outlives the scan — persisted now, reset only by hand —
     // and the grouping follows it: in room mode a block's sub-headings
@@ -497,7 +496,7 @@ void main() {
     );
   }, skip: _missing);
 
-  test('scan is a no-op without a source', () async {
+  test('scan is a no-op without a file', () async {
     final viewModel = _viewModel();
 
     await viewModel.scan(null);
@@ -521,7 +520,7 @@ void main() {
     /// first (which also rebuilds the sections, so pick after that).
     Future<ScannerViewModel> allSelected({bool unfiltered = false}) async {
       final viewModel = _viewModel();
-      await viewModel.scan(SchedulePdf(_sample()));
+      await viewModel.scan(_sample());
       if (unfiltered) _noFilters(viewModel);
       selectAll(viewModel);
       return viewModel;
@@ -530,39 +529,57 @@ void main() {
     test('a scan starts from the default choice', () async {
       final viewModel = _viewModel();
 
-      await viewModel.scan(SchedulePdf(_sample()));
+      await viewModel.scan(_sample());
 
-      // The labs' whole day, booked slots only — what a fresh install
+      // The labs about to start, booked slots only — what a fresh install
       // shows — under the time-first ascending sort.
       expect(viewModel.choice, ScanSettings.defaults);
       final filters = viewModel.filters;
       expect(filters.roomType, RoomTypeChoice.labs);
-      expect(filters.view, ViewChoice.all);
+      expect(filters.view, ViewChoice.soon);
       expect(filters.state, StateChoice.busy);
       expect(viewModel.sortMode, SortMode.timeThenRoom);
       expect(viewModel.sortOrder, SortOrder.ascending);
-      // Nothing preset fits it: the defaults are the custom state.
-      expect(viewModel.activePreset, isNull);
+      // The defaults are exactly the first preset's choice, so a fresh
+      // install opens already under a named preset.
+      expect(viewModel.activePreset, presets[0]);
+      expect(ScanSettings.defaults, presets[0].settings);
     }, skip: _missing);
 
-    test('the default list is the booked compute labs', () async {
-      final viewModel = await allSelected();
+    test(
+      'the default list is the booked compute labs about to start',
+      () async {
+        // The default view (`A punto de comenzar`) reads the clock, so this
+        // one runs at 10:05 — the fixture books labs at 10:15, ten minutes
+        // out of the fifteen-minute window.
+        final now = DateTime(2026, 1, 1, 10, 5);
+        final viewModel = ScannerViewModel(clock: () => now);
 
-      final cards = _cards(viewModel.visibleSectionsByBlock).toList();
-      // The sample books compute labs…
-      expect(cards, isNotEmpty);
-      // …and that is all that shows: no other room and no free slot.
-      expect([
-        for (final card in cards) isComputeLab(card.room),
-      ], everyElement(true));
-      expect([for (final card in cards) card.isFree], everyElement(false));
-      // The rest of the schedule is behind the choice: every room outside
-      // the lab list never reaches the list.
-      expect(
-        _cardCount(viewModel.visibleSectionsByBlock),
-        lessThan(_cardCount(viewModel.sectionsByBlock)),
-      );
-    }, skip: _missing);
+        await viewModel.scan(_sample());
+        selectAll(viewModel);
+
+        final cards = _cards(viewModel.visibleSectionsByBlock).toList();
+        // The sample books compute labs…
+        expect(cards, isNotEmpty);
+        // …and that is all that shows: no other room, no free slot, and —
+        // under the default view — only what starts within the next quarter
+        // of an hour.
+        expect([
+          for (final card in cards) isComputeLab(card.room),
+        ], everyElement(true));
+        expect([for (final card in cards) card.isFree], everyElement(false));
+        expect([
+          for (final card in cards) isImminent(card.start, now),
+        ], everyElement(true));
+        // The rest of the schedule is behind the choice: every room outside
+        // the lab list and every later session never reaches the list.
+        expect(
+          _cardCount(viewModel.visibleSectionsByBlock),
+          lessThan(_cardCount(viewModel.sectionsByBlock)),
+        );
+      },
+      skip: _missing,
+    );
 
     test('the Tipo de aula choice picks the labs out and back', () async {
       final viewModel = await allSelected(unfiltered: true);
@@ -600,7 +617,10 @@ void main() {
     test('the Estado choice decides which slots exist as cards', () async {
       final viewModel = _viewModel();
 
-      await viewModel.scan(SchedulePdf(_sample()));
+      await viewModel.scan(_sample());
+      // The view off: this section is the Estado choice's alone — the
+      // default one reads the clock, which the cards below do not.
+      viewModel.setView(ViewChoice.all);
       // The sample has both kinds of slot to filter.
       expect(viewModel.entries.any((entry) => entry.isFree), isTrue);
       expect(viewModel.entries.any((entry) => !entry.isFree), isTrue);
@@ -646,7 +666,7 @@ void main() {
       final now = DateTime(2026, 1, 1, 10, 5);
       final viewModel = ScannerViewModel(clock: () => now);
 
-      await viewModel.scan(SchedulePdf(_sample()));
+      await viewModel.scan(_sample());
       // Only the view acts here — every room on the list, the free slots
       // out at their default state.
       viewModel.setRoomType(RoomTypeChoice.all);
@@ -707,11 +727,14 @@ void main() {
       final now = DateTime(2026, 1, 1, 10, 5);
       final viewModel = ScannerViewModel(clock: () => now);
 
-      await viewModel.scan(SchedulePdf(_sample()));
-      // Only the view acts here: the rooms widen to every one, the free
-      // slots stay out at their default state — with free slots in, some
-      // room would always hold something underway.
+      await viewModel.scan(_sample());
+      // Only the view acts here: the rooms widen to every one, and the
+      // view walks to `Todo` — the default would already be filtering the
+      // section this test needs on screen first. The free slots stay out
+      // at their default state — with free slots in, some room would
+      // always hold something underway.
       viewModel.setRoomType(RoomTypeChoice.all);
+      viewModel.setView(ViewChoice.all);
 
       // A section whose cards have all been over for a while — the
       // sample's early morning, asked for rather than assumed.
@@ -733,7 +756,7 @@ void main() {
 
     test('the choices narrow inside the chip selection', () async {
       final viewModel = _viewModel();
-      await viewModel.scan(SchedulePdf(_sample()));
+      await viewModel.scan(_sample());
       _noFilters(viewModel);
 
       // A section with no compute lab in it — the sample's first block,
@@ -791,23 +814,23 @@ void main() {
       () async {
         final viewModel = _viewModel();
 
-        await viewModel.scan(SchedulePdf(_sample()));
+        await viewModel.scan(_sample());
 
-        // The defaults fit no preset — the `Personalizado` state…
-        expect(viewModel.activePreset, isNull);
+        // The defaults fit the first preset — `Laboratorios por empezar`…
+        expect(viewModel.activePreset, presets[0]);
 
-        viewModel.applyPreset(presets[2]); // Laboratorios por empezar
+        viewModel.applyPreset(presets[1]); // Aulas libres ahora
 
-        // …one tap puts the whole choice on it, and the name follows.
-        expect(viewModel.choice, presets[2].settings);
-        expect(viewModel.activePreset, presets[2]);
-        expect(viewModel.roomType, RoomTypeChoice.labs);
-        expect(viewModel.view, ViewChoice.soon);
-        expect(viewModel.state, StateChoice.busy);
-        // The sections followed the state choice: booked slots only.
+        // …one tap puts the whole choice on another, and the name follows.
+        expect(viewModel.choice, presets[1].settings);
+        expect(viewModel.activePreset, presets[1]);
+        expect(viewModel.roomType, RoomTypeChoice.rooms);
+        expect(viewModel.view, ViewChoice.now);
+        expect(viewModel.state, StateChoice.free);
+        // The sections followed the state choice: free slots only.
         expect([
           for (final card in _cards(viewModel.sectionsByBlock)) card.isFree,
-        ], everyElement(false));
+        ], everyElement(true));
 
         // One field moved off the preset and the name is gone again.
         viewModel.setSort(SortMode.roomThenTime, SortOrder.ascending);
@@ -824,7 +847,7 @@ void main() {
       expect(viewModel.state, StateChoice.all);
       expect(viewModel.hasSelection, isTrue);
 
-      await viewModel.scan(SchedulePdf(_sample()));
+      await viewModel.scan(_sample());
 
       // The choice outlives the scan now — only the selection starts
       // over, so the prompt shows until a chip is chosen.
@@ -848,7 +871,7 @@ void main() {
         );
       final viewModel = _storedViewModel(settings);
 
-      await viewModel.scan(SchedulePdf(_sample()));
+      await viewModel.scan(_sample());
 
       // The stored snapshot is the whole state — the five fields, nothing
       // derived.
@@ -874,7 +897,7 @@ void main() {
       final settings = _FakeSettings();
       final viewModel = _storedViewModel(settings);
 
-      await viewModel.scan(SchedulePdf(_sample()));
+      await viewModel.scan(_sample());
       viewModel.setSort(SortMode.roomThenTime, SortOrder.descending);
 
       expect(settings.stored!.sortMode, SortMode.roomThenTime);
@@ -882,7 +905,7 @@ void main() {
       // The untouched sections come along as they stand — the defaults
       // from the scan before the first change.
       expect(settings.stored!.roomType, RoomTypeChoice.labs);
-      expect(settings.stored!.view, ViewChoice.all);
+      expect(settings.stored!.view, ViewChoice.soon);
       expect(settings.stored!.state, StateChoice.busy);
 
       viewModel.setState(StateChoice.free);
@@ -894,7 +917,7 @@ void main() {
           sortMode: SortMode.roomThenTime,
           sortOrder: SortOrder.descending,
           roomType: RoomTypeChoice.labs,
-          view: ViewChoice.all,
+          view: ViewChoice.soon,
           state: StateChoice.free,
         ),
       );
@@ -908,21 +931,30 @@ void main() {
       'restoreDefaults gives back the defaults and keeps the chips',
       () async {
         final settings = _FakeSettings();
-        final viewModel = _storedViewModel(settings);
+        // The restored default view reads the clock: 10:05 puts the
+        // fixture's 10:15 lab sessions inside its fifteen-minute window.
+        final now = DateTime(2026, 1, 1, 10, 5);
+        final viewModel = ScannerViewModel(
+          clock: () => now,
+          settings: settings,
+        );
 
-        await viewModel.scan(SchedulePdf(_sample()));
+        await viewModel.scan(_sample());
         viewModel
           ..setSort(SortMode.roomThenTime, SortOrder.descending)
           ..setRoomType(RoomTypeChoice.rooms)
           ..setState(StateChoice.all);
-        // A section with a *booked* lab in it — it has to outlive the
-        // restored `Laboratorios` and `Solo ocupadas` for the chips to
-        // still show something.
+        // A section with a booked, about-to-start lab in it — it has to
+        // outlive the restored `Laboratorios`, `A punto de comenzar` and
+        // `Solo ocupadas` for the chips to still show something.
         final section = viewModel.sectionsByBlock
             .firstWhere(
-              (section) =>
-                  _cards([section])
-                      .any((card) => isComputeLab(card.room) && !card.isFree),
+              (section) => _cards([section]).any(
+                (card) =>
+                    isComputeLab(card.room) &&
+                    !card.isFree &&
+                    isImminent(card.start, now),
+              ),
             )
             .title;
         viewModel.toggleSection(section);
@@ -938,7 +970,7 @@ void main() {
         expect(viewModel.sortMode, SortMode.timeThenRoom);
         expect(viewModel.sortOrder, SortOrder.ascending);
         expect(viewModel.roomType, RoomTypeChoice.labs);
-        expect(viewModel.view, ViewChoice.all);
+        expect(viewModel.view, ViewChoice.soon);
         expect(viewModel.state, StateChoice.busy);
         // The sections were rebuilt with them — `Solo ocupadas` again, so
         // the free slots are no cards.
@@ -959,7 +991,10 @@ void main() {
     test('clearSelection empties the chips in one go', () async {
       final viewModel = _viewModel();
 
-      await viewModel.scan(SchedulePdf(_sample()));
+      await viewModel.scan(_sample());
+      // The default view is time-bound; walk it to `Todo` so every pick
+      // shows its cards here.
+      viewModel.setView(ViewChoice.all);
       for (final section in viewModel.sectionsByBlock) {
         viewModel.toggleSection(section.title);
       }
@@ -975,7 +1010,4 @@ void main() {
       expect(viewModel.sectionsByBlock, isNotEmpty);
     }, skip: _missing);
   });
-
-  // The ScheduleImage branch goes through ML Kit, which only ships
-  // Android/iOS implementations, so it cannot be exercised host-side.
 }

@@ -7,12 +7,10 @@ import 'package:sched_scan/schedule/schedule_view.dart';
 import 'package:sched_scan/schedule/schedule_viewmodel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum InputMode { image, pdf }
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // The platform side has to be up before the first frame: the scanner
-  // viewmodel reads the persisted sort and marks synchronously, at its
+  // viewmodel reads the persisted choice synchronously, at its
   // construction below.
   final prefs = await SharedPreferences.getInstance();
   runApp(MainApp(settings: SharedPrefsSettingsStore(prefs)));
@@ -21,7 +19,7 @@ Future<void> main() async {
 class MainApp extends StatefulWidget {
   const MainApp({super.key, this.settings});
 
-  /// Where the scanner viewmodel keeps its sort and filter marks between
+  /// Where the scanner viewmodel keeps its sort and filter choices between
   /// scans and restarts; without one nothing is stored or restored.
   final SettingsStore? settings;
 
@@ -33,22 +31,9 @@ class _MainAppState extends State<MainApp> {
   final _scheduleViewModel = ScheduleViewModel();
   late final _scannerViewModel = ScannerViewModel(settings: widget.settings);
 
-  InputMode _mode = InputMode.pdf;
-
-  void _toggleMode() {
-    setState(() {
-      _mode = _mode == InputMode.image ? InputMode.pdf : InputMode.image;
-    });
-  }
-
   Future<void> _process() async {
-    switch (_mode) {
-      case InputMode.image:
-        await _scheduleViewModel.pickImage();
-      case InputMode.pdf:
-        await _scheduleViewModel.pickPdf();
-    }
-    await _scannerViewModel.scan(_scheduleViewModel.source);
+    await _scheduleViewModel.pickPdf();
+    await _scannerViewModel.scan(_scheduleViewModel.file);
   }
 
   @override
@@ -95,11 +80,6 @@ class _MainAppState extends State<MainApp> {
                       tooltip: 'Ordenar',
                     ),
             ),
-            IconButton(
-              onPressed: _toggleMode,
-              icon: const Icon(Icons.sync_alt, color: Colors.white),
-              tooltip: 'Cambiar entre imagen y PDF',
-            ),
           ],
         ),
         body: ListenableBuilder(
@@ -112,10 +92,11 @@ class _MainAppState extends State<MainApp> {
             child: CustomScrollView(
               slivers: [
                 ScheduleView(viewModel: _scheduleViewModel),
-                // While no source exists, ScheduleView fills the viewport
-                // with the initial prompt and the scanner has nothing to
-                // show — it only joins once there is something to scan.
-                if (_scheduleViewModel.source != null)
+                // While nothing has been picked, ScheduleView fills the
+                // viewport with the initial prompt and the scanner has
+                // nothing to show — it only joins once there is something
+                // to scan.
+                if (_scheduleViewModel.file != null)
                   ScannerView(viewModel: _scannerViewModel),
               ],
             ),
@@ -123,9 +104,7 @@ class _MainAppState extends State<MainApp> {
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: _process,
-          child: Icon(
-            _mode == InputMode.image ? Icons.image : Icons.picture_as_pdf,
-          ),
+          child: const Icon(Icons.picture_as_pdf),
         ),
       ),
       debugShowCheckedModeBanner: false,

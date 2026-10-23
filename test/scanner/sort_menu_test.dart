@@ -7,8 +7,7 @@ import 'package:sched_scan/scanner/scanner_viewmodel.dart';
 import 'package:sched_scan/scanner/settings_store.dart';
 import 'package:sched_scan/scanner/sort_menu.dart';
 
-/// Never disposed: closing the ML Kit recognizer reaches a plugin that does
-/// not exist on the host, and no OCR runs in these tests to allocate one.
+/// The viewmodel owns no platform resource, so nothing here disposes it.
 ScannerViewModel _viewModel() => ScannerViewModel();
 
 /// Opens the sheet over [viewModel] on a tall surface, so the whole
@@ -59,7 +58,7 @@ bool _ticked(WidgetTester tester, Finder row) => find
     .isNotEmpty;
 
 void main() {
-  testWidgets('opens on Presets: the three rows, the lit Personalizado and no '
+  testWidgets('opens on Presets: the four rows, the lit default and no '
       'filters yet', (tester) async {
     final viewModel = _viewModel();
 
@@ -74,13 +73,21 @@ void main() {
     for (final preset in presets) {
       expect(_preset(preset.name), findsOneWidget);
       expect(find.text(preset.description), findsOneWidget);
-      expect(tester.widget<ListTile>(_preset(preset.name)).selected, isFalse);
+      // The defaults are exactly the first preset's choice, so that one
+      // opens already lit — tinted and ticked — and the rest dark.
+      final lit = identical(preset, presets[0]);
+      expect(
+        tester.widget<ListTile>(_preset(preset.name)).selected,
+        lit,
+        reason: preset.name,
+      );
+      expect(_ticked(tester, _preset(preset.name)), lit, reason: preset.name);
     }
     expect(_custom(), findsOneWidget);
-    // The defaults match no preset, so the custom state is the one
-    // lit — ticked, and its row tinted.
-    expect(tester.widget<ListTile>(_custom()).selected, isTrue);
-    expect(_ticked(tester, _custom()), isTrue);
+    // `Personalizado` is the odd one out: nothing of the choice is off
+    // the presets, so it stands dark and unticked.
+    expect(tester.widget<ListTile>(_custom()).selected, isFalse);
+    expect(_ticked(tester, _custom()), isFalse);
 
     // The other tab's body is not built until its tab is asked for.
     expect(_row(SortMode.timeThenRoom), findsNothing);
@@ -100,18 +107,23 @@ void main() {
 
     await _openMenu(tester, viewModel);
 
-    await tester.tap(_preset(presets[0].name));
+    // The menu opens with the default preset already lit, so one tap on
+    // another one has to move the whole choice off it…
+    expect(viewModel.activePreset, presets[0]);
+
+    await tester.tap(_preset(presets[1].name));
     await tester.pump();
 
     // The whole choice — sort and the three sections — lands at once,
-    // and the row takes the tick the custom row just lost.
-    expect(viewModel.choice, presets[0].settings);
-    expect(viewModel.activePreset, presets[0]);
+    // and the row takes the tick the default preset just lost.
+    expect(viewModel.choice, presets[1].settings);
+    expect(viewModel.activePreset, presets[1]);
     expect(viewModel.roomType, RoomTypeChoice.rooms);
     expect(viewModel.view, ViewChoice.now);
     expect(viewModel.state, StateChoice.free);
-    expect(_ticked(tester, _preset(presets[0].name)), isTrue);
-    expect(tester.widget<ListTile>(_preset(presets[0].name)).selected, isTrue);
+    expect(_ticked(tester, _preset(presets[1].name)), isTrue);
+    expect(tester.widget<ListTile>(_preset(presets[1].name)).selected, isTrue);
+    expect(_ticked(tester, _preset(presets[0].name)), isFalse);
     expect(_ticked(tester, _custom()), isFalse);
     expect(tester.widget<ListTile>(_custom()).selected, isFalse);
 
@@ -124,7 +136,7 @@ void main() {
     expect(viewModel.choice, presets[2].settings);
     expect(viewModel.activePreset, presets[2]);
     expect(_ticked(tester, _preset(presets[2].name)), isTrue);
-    expect(_ticked(tester, _preset(presets[0].name)), isFalse);
+    expect(_ticked(tester, _preset(presets[1].name)), isFalse);
     expect(find.byType(BottomSheet), findsOneWidget);
   });
 
@@ -176,7 +188,7 @@ void main() {
     expect(find.byTooltip('Ascendente'), findsOneWidget);
 
     // Every option of every section, one tick per section — exactly the
-    // defaults: labs, whole day, booked only.
+    // defaults: labs, starting soon, booked only.
     for (final choice in RoomTypeChoice.values) {
       expect(_choice('roomType', choice.name), findsOneWidget);
       expect(
@@ -188,7 +200,7 @@ void main() {
       expect(_choice('view', choice.name), findsOneWidget);
       expect(
         _ticked(tester, _choice('view', choice.name)),
-        choice == ViewChoice.all,
+        choice == ViewChoice.soon,
       );
     }
     for (final choice in StateChoice.values) {
@@ -376,15 +388,21 @@ void main() {
     expect(find.byIcon(Icons.arrow_downward), findsNothing);
     expect(find.byType(BottomSheet), findsOneWidget);
 
-    // Over on Presets the defaults light `Personalizado` again — no
-    // preset fits them — and the button came along to the other tab.
+    // Over on Presets the defaults light `Laboratorios por empezar` again
+    // — they are exactly its choice — and the button came along to the
+    // other tab, with `Personalizado` dark once more.
     await tester.tap(find.text('Presets'));
     await tester.pumpAndSettle();
 
     expect(restore, findsOneWidget);
-    expect(tester.widget<ListTile>(_custom()).selected, isTrue);
+    expect(tester.widget<ListTile>(_custom()).selected, isFalse);
+    expect(_ticked(tester, _custom()), isFalse);
     for (final preset in presets) {
-      expect(_ticked(tester, _preset(preset.name)), isFalse);
+      expect(
+        _ticked(tester, _preset(preset.name)),
+        identical(preset, presets[0]),
+        reason: preset.name,
+      );
     }
   });
 
