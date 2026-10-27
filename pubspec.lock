@@ -9,6 +9,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.0"
+  archive:
+    dependency: transitive
+    description:
+      name: archive
+      sha256: "0d58d1fa1fddf6588251ccf2819f3fb3b6d0452c1b2813ac7413a05592bfbefe"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.5.2"
   args:
     dependency: transitive
     description:
@@ -25,6 +33,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.13.1"
+  bidi:
+    dependency: transitive
+    description:
+      name: bidi
+      sha256: "77f475165e94b261745cf1032c751e2032b8ed92ccb2bf5716036db79320637d"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.13"
   boolean_selector:
     dependency: transitive
     description:
@@ -57,14 +73,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.19.1"
-  convert:
-    dependency: transitive
-    description:
-      name: convert
-      sha256: b30acd5944035672bc15c6b7a8b47d773e41e2f17de064350988c5d02adb1c68
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.1.2"
   cross_file:
     dependency: "direct main"
     description:
@@ -77,10 +85,10 @@ packages:
     dependency: transitive
     description:
       name: crypto
-      sha256: c8ea0233063ba03258fbcf2ca4d6dadfefe14f02fab57702265467a19f27fadf
+      sha256: e3626ae6270383c9e3a549f34c9e4cd26c09ae6a9adaab2bf4737a00340efdc4
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.7"
+    version: "3.0.8"
   dbus:
     dependency: transitive
     description:
@@ -184,30 +192,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  http:
+  image:
     dependency: transitive
     description:
-      name: http
-      sha256: "87721a4a50b19c7f1d49001e51409bddc46303966ce89a65af4f4e6004896412"
+      name: image
+      sha256: "89ed75b2f8231fe676808c5564f9590d728024ded7ac782a7ed8474f1c95b72a"
       url: "https://pub.dev"
     source: hosted
-    version: "1.6.0"
-  http_parser:
-    dependency: transitive
-    description:
-      name: http_parser
-      sha256: "178d74305e7866013777bab2c3d8726205dc5a4dd935297175b19a23a2e66571"
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.1.2"
-  intl:
-    dependency: transitive
-    description:
-      name: intl
-      sha256: "1ca20c894b1717686a2319b8548763d812bc0aabdac580420a44c5178c57a867"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.20.3"
+    version: "4.12.0"
   leak_tracker:
     dependency: transitive
     description:
@@ -296,6 +288,30 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.3.0"
+  pdf_cos:
+    dependency: transitive
+    description:
+      name: pdf_cos
+      sha256: "55e3bc1596ee7f143620057da8868638196c50af5a2c577f8d642918b3381618"
+      url: "https://pub.dev"
+    source: hosted
+    version: "12.0.0"
+  pdf_document:
+    dependency: "direct main"
+    description:
+      name: pdf_document
+      sha256: "9db550b381fb54e6d1be3557fa5045e88102b9865011da8fc163e758a3255b0c"
+      url: "https://pub.dev"
+    source: hosted
+    version: "12.0.0"
+  pdf_graphics:
+    dependency: "direct main"
+    description:
+      name: pdf_graphics
+      sha256: "743c9994254d3e78bbaff2fb3947d44fd474f0ede51e2b09abf81142d6f3ad86"
+      url: "https://pub.dev"
+    source: hosted
+    version: "12.0.0"
   petitparser:
     dependency: transitive
     description:
@@ -320,6 +336,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.8"
+  posix:
+    dependency: transitive
+    description:
+      name: posix
+      sha256: "6312deb534ce3812a1b454143740ffe721a17dc3a33bfc978f3a6d7bc5833edf"
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.5.3"
   shared_preferences:
     dependency: "direct main"
     description:
@@ -421,22 +445,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.1"
-  syncfusion_flutter_core:
-    dependency: transitive
-    description:
-      name: syncfusion_flutter_core
-      sha256: "85c1d4be09cfa5b74a026cd1b4c5c7c1a2b2bf709e5e61d4c2feee989ebb1da4"
-      url: "https://pub.dev"
-    source: hosted
-    version: "34.2.9"
-  syncfusion_flutter_pdf:
-    dependency: "direct main"
-    description:
-      name: syncfusion_flutter_pdf
-      sha256: "8be430906439dcdb2d5ef093849d7855b4806b2f150750def855e80e8bfde4b0"
-      url: "https://pub.dev"
-    source: hosted
-    version: "34.2.9"
   term_glyph:
     dependency: transitive
     description:
@@ -453,14 +461,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.12"
-  typed_data:
-    dependency: transitive
-    description:
-      name: typed_data
-      sha256: f9049c039ebfeb4cf7a7104a675823cd72dba8297f264b6637062516699fa006
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.4.0"
   vector_math:
     dependency: transitive
     description:

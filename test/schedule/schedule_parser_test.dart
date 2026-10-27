@@ -4,8 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sched_scan/schedule/models/schedule_entry.dart';
 import 'package:sched_scan/schedule/models/schedule_line.dart';
 import 'package:sched_scan/schedule/models/schedule_word.dart';
+import 'package:sched_scan/schedule/pdf_text_layer.dart';
 import 'package:sched_scan/schedule/schedule_parser.dart';
-import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 /// Height of every synthetic word. The parser only uses it to stack label
 /// words into visual lines.
@@ -24,11 +24,65 @@ const _boundary = 80.0;
 const _col1 = 200.0;
 const _col2 = 400.0;
 
-const _samplePath = 'test/fixtures/sample_01.pdf';
+/// A booked slot the parse must read whole: its room and range plus the rest
+/// of the cell as printed. `null` where the schedule prints no such slot.
+typedef _Slot = ({
+  String room,
+  String start,
+  String end,
+  String course,
+  String section,
+  String cycle,
+  String person,
+});
 
-/// The fixture in the October 2026 format: the text layer there is emitted
-/// one character per word, which is what the stitching step exists for.
-const _newSamplePath = 'test/fixtures/sample_02.pdf';
+/// The real fixtures in the repo, in order: `sample_01` carries the old
+/// whole-word text layer, `sample_02`… the October 2026 one that emits a
+/// fragment per character (what the stitching step exists for). Each group
+/// skips itself when its PDF is absent.
+const _fixtures = <({String path, String name, _Slot? slot})>[
+  (path: 'test/fixtures/sample_01.pdf', name: 'sample_01', slot: null),
+  (
+    path: 'test/fixtures/sample_02.pdf',
+    name: 'sample_02',
+    slot: (
+      room: 'B-201 (LABORATORIO DE CÓMPUTO)',
+      start: '18:00',
+      end: '21:00',
+      course: 'GESTION DE DATOS (BIG DATA Y BI)',
+      section: '32',
+      cycle: '6',
+      person: 'RECALDE PEÑA FRESHY ANALY',
+    ),
+  ),
+  (
+    path: 'test/fixtures/sample_03.pdf',
+    name: 'sample_03',
+    slot: (
+      room: 'B-201 (LABORATORIO DE CÓMPUTO)',
+      start: '18:00',
+      end: '21:00',
+      course: 'SIMULACIÓN Y TOMA DE DECISIONES',
+      section: '2',
+      cycle: '8',
+      person: 'DIAZ DIAZ DEMETRIO MANUEL',
+    ),
+  ),
+  (
+    path: 'test/fixtures/sample_04.pdf',
+    name: 'sample_04',
+    slot: (
+      room: 'B-201 (LABORATORIO DE CÓMPUTO)',
+      start: '18:00',
+      end: '21:00',
+      course: 'SIMULACIÓN Y TOMA DE DECISIONES',
+      section: '2',
+      cycle: '8',
+      person: 'DIAZ DIAZ DEMETRIO MANUEL',
+    ),
+  ),
+  (path: 'test/fixtures/sample_05.pdf', name: 'sample_05', slot: null),
+];
 
 ScheduleLine _header(int page) => ScheduleLine(
   pageIndex: page,
@@ -127,27 +181,6 @@ ScheduleLine _spelled(int page, double top, double left, List<String> tokens) {
   }
   return ScheduleLine(pageIndex: page, words: words);
 }
-
-/// A PDF's text layer as the parser sees it: whitespace fragments kept, the
-/// way `ScannerViewModel._toScheduleLines` hands the lines over — the parser
-/// stitches the fragments back into whole words itself.
-List<ScheduleLine> _scheduleLines(PdfTextExtractor extractor) => [
-  for (final line in extractor.extractTextLines())
-    ScheduleLine(
-      pageIndex: line.pageIndex,
-      words: [
-        for (final word in line.wordCollection)
-          if (word.text.isNotEmpty)
-            ScheduleWord(
-              text: word.text.trim(),
-              left: word.bounds.left,
-              top: word.bounds.top,
-              right: word.bounds.right,
-              bottom: word.bounds.bottom,
-            ),
-      ],
-    ),
-];
 
 void main() {
   group('ScheduleParser', () {
@@ -608,128 +641,80 @@ void main() {
     });
   });
 
-  group('ScheduleParser on the sample PDF', () {
-    final present = File(_samplePath).existsSync();
-    final skip = present ? false : 'sample pdf not found';
+  for (final fixture in _fixtures) {
+    group('ScheduleParser on ${fixture.name}.pdf', () {
+      final present = File(fixture.path).existsSync();
+      final skip = present ? false : '${fixture.name} pdf not found';
 
-    late List<ScheduleEntry> entries;
-    late int timeAnchors;
-    late int sectionAnchors;
+      late List<ScheduleEntry> entries;
+      late int timeAnchors;
+      late int sectionAnchors;
 
-    setUpAll(() {
-      if (!present) return;
+      setUpAll(() {
+        if (!present) return;
 
-      final pdf = PdfDocument(inputBytes: File(_samplePath).readAsBytesSync());
-      final extractor = PdfTextExtractor(pdf);
+        final layer = readPdfTextLayer(File(fixture.path).readAsBytesSync());
 
-      // `De:` is printed once per slot and `SEC:` once per section, so the
-      // parser must consume exactly as many as the text layer holds.
-      timeAnchors = 0;
-      sectionAnchors = 0;
-      for (final line in extractor.extractTextLines()) {
-        final text = line.text.trim();
-        if (text.startsWith('De:')) timeAnchors++;
-        if (text.contains('SEC:')) sectionAnchors++;
+        // `De:` is printed once per slot and `SEC:` once per section, so the
+        // parser must consume exactly as many as the text layer holds.
+        // Counted as occurrences rather than lines: one printed line can
+        // hold two cells' time ranges (a page-break continuation row shares
+        // a baseline), and a per-character layer splits the anchors into
+        // fragments the raw concatenation here spells back together.
+        timeAnchors = 0;
+        sectionAnchors = 0;
+        for (final line in layer.lines) {
+          final text = line.words.map((word) => word.text).join();
+          timeAnchors += 'De:'.allMatches(text).length;
+          sectionAnchors += 'SEC:'.allMatches(text).length;
+        }
+
+        entries = ScheduleParser().parse(layer.lines);
+      });
+
+      test('gives every printed time range and section an entry', () {
+        expect(entries, isNotEmpty);
+        expect(
+          entries.where((entry) => entry.start != null),
+          hasLength(timeAnchors),
+        );
+        expect(
+          entries.where((entry) => entry.section != null),
+          hasLength(sectionAnchors),
+        );
+        expect(entries.where((entry) => entry.start == null), isEmpty);
+      }, skip: skip);
+
+      test('never splits a room name and keeps the compute labs', () {
+        final rooms = {for (final entry in entries) entry.room};
+        expect(rooms, isNotEmpty);
+        expect(
+          rooms.where((room) => room.contains('(') && !room.contains(')')),
+          isEmpty,
+        );
+        expect(rooms, contains('B-203 (LABORATORIO DE CÓMPUTO)'));
+      }, skip: skip);
+
+      test('reads the room whose name the first page break cuts', () {
+        expect(
+          entries.map((entry) => entry.room),
+          contains('J-223 (LABORATORIO DE BIOLOGÍA CELULAR Y MICROBIOLOGÍA)'),
+        );
+      }, skip: skip);
+
+      final slot = fixture.slot;
+      if (slot != null) {
+        test('reads a booked slot whole', () {
+          final entry = entries.firstWhere(
+            (entry) => entry.room == slot.room && entry.start == slot.start,
+          );
+          expect(entry.end, slot.end);
+          expect(entry.course, slot.course);
+          expect(entry.section, slot.section);
+          expect(entry.cycle, slot.cycle);
+          expect(entry.person, slot.person);
+        }, skip: skip);
       }
-
-      entries = ScheduleParser().parse(_scheduleLines(extractor));
-      pdf.dispose();
     });
-
-    test('gives every printed time range and section an entry', () {
-      expect(entries, isNotEmpty);
-      expect(
-        entries.where((entry) => entry.start != null),
-        hasLength(timeAnchors),
-      );
-      expect(
-        entries.where((entry) => entry.section != null),
-        hasLength(sectionAnchors),
-      );
-      expect(entries.where((entry) => entry.start == null), isEmpty);
-    }, skip: skip);
-
-    test('never splits a room name', () {
-      final rooms = {for (final entry in entries) entry.room};
-      expect(rooms, isNotEmpty);
-      expect(
-        rooms.where((room) => room.contains('(') && !room.contains(')')),
-        isEmpty,
-      );
-    }, skip: skip);
-
-    test('reads the room whose name the first page break cuts', () {
-      expect(
-        entries.map((entry) => entry.room),
-        contains('J-223 (LABORATORIO DE BIOLOGÍA CELULAR Y MICROBIOLOGÍA)'),
-      );
-    }, skip: skip);
-  });
-
-  group('ScheduleParser on the October 2026 sample PDF', () {
-    final present = File(_newSamplePath).existsSync();
-    final skip = present ? false : 'sample_02 pdf not found';
-
-    late List<ScheduleEntry> entries;
-    late int timeAnchors;
-    late int sectionAnchors;
-
-    setUpAll(() {
-      if (!present) return;
-
-      final pdf = PdfDocument(
-        inputBytes: File(_newSamplePath).readAsBytesSync(),
-      );
-      final extractor = PdfTextExtractor(pdf);
-
-      timeAnchors = 0;
-      sectionAnchors = 0;
-      for (final line in extractor.extractTextLines()) {
-        final text = line.text.trim();
-        if (text.startsWith('De:')) timeAnchors++;
-        if (text.contains('SEC:')) sectionAnchors++;
-      }
-
-      entries = ScheduleParser().parse(_scheduleLines(extractor));
-      pdf.dispose();
-    });
-
-    test('stitches the per-character text layer into whole entries', () {
-      expect(entries, isNotEmpty);
-      // One printed line can hold two cells' time ranges (a page-break
-      // continuation row shares a baseline), so the entries started can
-      // outnumber the `De:` lines — but never fall short of one per line.
-      expect(
-        entries.where((entry) => entry.start != null),
-        hasLength(greaterThanOrEqualTo(timeAnchors)),
-      );
-      expect(
-        entries.where((entry) => entry.section != null),
-        hasLength(sectionAnchors),
-      );
-      expect(entries.where((entry) => entry.start == null), isEmpty);
-    }, skip: skip);
-
-    test('never splits a room name and keeps the compute labs', () {
-      final rooms = {for (final entry in entries) entry.room};
-      expect(
-        rooms.where((room) => room.contains('(') && !room.contains(')')),
-        isEmpty,
-      );
-      expect(rooms, contains('B-203 (LABORATORIO DE CÓMPUTO)'));
-    }, skip: skip);
-
-    test('reads a booked slot whole', () {
-      final entry = entries.firstWhere(
-        (entry) =>
-            entry.room == 'B-201 (LABORATORIO DE CÓMPUTO)' &&
-            entry.start == '18:00',
-      );
-      expect(entry.end, '21:00');
-      expect(entry.course, 'GESTION DE DATOS (BIG DATA Y BI)');
-      expect(entry.section, '32');
-      expect(entry.cycle, '6');
-      expect(entry.person, 'RECALDE PEÑA FRESHY ANALY');
-    }, skip: skip);
-  });
+  }
 }

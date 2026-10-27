@@ -7,10 +7,8 @@ import 'package:sched_scan/scanner/models/sort_mode.dart';
 import 'package:sched_scan/scanner/settings_store.dart';
 import 'package:sched_scan/schedule/models/entry_section.dart';
 import 'package:sched_scan/schedule/models/schedule_entry.dart';
-import 'package:sched_scan/schedule/models/schedule_line.dart';
-import 'package:sched_scan/schedule/models/schedule_word.dart';
+import 'package:sched_scan/schedule/pdf_text_layer.dart';
 import 'package:sched_scan/schedule/schedule_parser.dart';
-import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 class ScannerViewModel extends ChangeNotifier {
   /// [clock] reads the current time for the `Ahora` and
@@ -295,30 +293,6 @@ class ScannerViewModel extends ChangeNotifier {
     }
   }
 
-  static List<ScheduleLine> _toScheduleLines(PdfTextExtractor extractor) {
-    return [
-      for (final line in extractor.extractTextLines())
-        ScheduleLine(
-          pageIndex: line.pageIndex,
-          words: [
-            // Whitespace fragments stay in: the newer PDFs emit text
-            // character by character, and the parser stitches the fragments
-            // back into words using the whitespace as its separator
-            // (`ScheduleParser.stitchGap`).
-            for (final word in line.wordCollection)
-              if (word.text.isNotEmpty)
-                ScheduleWord(
-                  text: word.text.trim(),
-                  left: word.bounds.left,
-                  top: word.bounds.top,
-                  right: word.bounds.right,
-                  bottom: word.bounds.bottom,
-                ),
-          ],
-        ),
-    ];
-  }
-
   /// The block a room belongs to: the `<letter>-<digit>` code printed in its
   /// name — `AULA A-203` → `A`, `J-110A (…)` → `J`, `MÚLTIPLE C-202` → `C`.
   /// The code has to start a word, so a hyphen inside one (`TALLER-2`) is not
@@ -431,16 +405,7 @@ class _PdfScanResult {
 }
 
 _PdfScanResult _parsePdfInBackground(Uint8List bytes) {
-  final document = PdfDocument(inputBytes: bytes);
-  try {
-    final extractor = PdfTextExtractor(document);
-
-    final entries = ScheduleParser().parse(
-      ScannerViewModel._toScheduleLines(extractor),
-    );
-
-    return _PdfScanResult(text: extractor.extractText(), entries: entries);
-  } finally {
-    document.dispose();
-  }
+  final layer = readPdfTextLayer(bytes);
+  final entries = ScheduleParser().parse(layer.lines);
+  return _PdfScanResult(text: layer.text, entries: entries);
 }

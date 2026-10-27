@@ -114,9 +114,10 @@ la compilación de Nix usa un conjunto de dependencias obsoleto.
   escaneo de imagen solo produce texto plano: el parser, las tarjetas, las
   secciones y el filtro son solo para PDF. La app arranca en modo PDF, y esa
   es la ruta que funciona.
-- `syncfusion_flutter_pdf` es un paquete **comercial** — la licencia gratuita
-  de comunidad de Syncfusion puede cubrirte. `read_pdf_text` (MIT, solo
-  Android/iOS) es la alternativa directa si la licencia importa.
+- La capa de texto del PDF se lee con `pdf_graphics` + `pdf_document` — ambos
+  **Apache-2.0**, Dart puro, sin paquetes comerciales en el árbol de
+  dependencias — y la misma ruta de código sirve para todas las plataformas
+  (la compilación web incluida).
 
 ## Arquitectura
 
@@ -127,7 +128,7 @@ vista (`ChangeNotifier`) — sin Riverpod/Bloc/Provider:
 lib/
   main.dart    # raíz de la app; crea y destruye los viewmodels
   scanner/     # despacho del escaneo (ML Kit o parser), lista de tarjetas, filtros, menú de orden y las tres filas
-  schedule/    # selección de archivos, parser de PDF (Dart puro), modelos, prompt
+  schedule/    # selección de archivos, capa de texto y parser de PDF (Dart puro), modelos, prompt
 ```
 
 `ScheduleParser` convierte la geometría de las palabras del PDF en registros

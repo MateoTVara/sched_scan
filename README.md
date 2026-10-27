@@ -108,9 +108,9 @@ Nix build uses a stale dependency set. `just add`, `just check`, and
   Linux/web builds — and even where OCR runs, an image scan only produces
   raw text: the parser, cards, sections, and filter are PDF-only. The app
   opens in PDF mode, and that is the path that works.
-- `syncfusion_flutter_pdf` is a **commercial package** — the free Syncfusion
-  community license may cover you. `read_pdf_text` (MIT, Android/iOS only) is
-  the drop-in alternative if licensing matters.
+- The PDF text layer is read with `pdf_graphics` + `pdf_document` — both
+  **Apache-2.0**, pure Dart, no commercial package in the dependency tree —
+  and the same code path serves every platform (the web build included).
 
 ## Architecture
 
@@ -121,7 +121,7 @@ viewmodel + view — no Riverpod/Bloc/Provider:
 lib/
   main.dart    # app root; owns and disposes the viewmodels
   scanner/     # scan dispatch (ML Kit or parser), card list, filter bar, sort menu + filter rows
-  schedule/    # picking, the pure-Dart PDF parser, models, opening prompt
+  schedule/    # picking, the pure-Dart PDF text layer + parser, models, opening prompt
 ```
 
 `ScheduleParser` turns word-level PDF geometry into `ScheduleEntry` records —
