@@ -5,7 +5,7 @@
 }:
 flutter.buildFlutterApplication {
   pname = "sched_scan";
-  version = "0.5.0";
+  version = "0.5.1";
 
   src = ../.;
 
