@@ -5,11 +5,11 @@ void main() {
   test('the sections read in the order the menu lists them', () {
     expect(
       [for (final choice in RoomTypeChoice.values) choice.label],
-      ['Todas las aulas', 'Laboratorios', 'Solo aulas'],
+      ['Todos los espacios', 'Solo aulas', 'Solo laboratorios'],
     );
     expect(
       [for (final choice in ViewChoice.values) choice.label],
-      ['Todo', 'Ahora', 'A punto de comenzar'],
+      ['Todo el día', 'Ahora', 'Inicios próximos'],
     );
     expect(
       [for (final choice in StateChoice.values) choice.label],
@@ -18,9 +18,9 @@ void main() {
   });
 
   test('a choice advances one step and wraps back to its first', () {
-    expect(RoomTypeChoice.all.next, RoomTypeChoice.labs);
-    expect(RoomTypeChoice.labs.next, RoomTypeChoice.rooms);
-    expect(RoomTypeChoice.rooms.next, RoomTypeChoice.all);
+    expect(RoomTypeChoice.all.next, RoomTypeChoice.rooms);
+    expect(RoomTypeChoice.rooms.next, RoomTypeChoice.labs);
+    expect(RoomTypeChoice.labs.next, RoomTypeChoice.all);
 
     expect(ViewChoice.all.next, ViewChoice.now);
     expect(ViewChoice.now.next, ViewChoice.soon);
@@ -31,8 +31,8 @@ void main() {
     expect(StateChoice.busy.next, StateChoice.all);
   });
 
-  test('the imminent view looks fifteen minutes ahead', () {
-    expect(upcomingWindow, const Duration(minutes: 15));
+  test('the opening-soon view looks ten minutes back', () {
+    expect(recentlyStartedWindow, const Duration(minutes: 10));
   });
 
   group('passesRoomType', () {
@@ -109,10 +109,23 @@ void main() {
       );
     });
 
-    test('a punto de comenzar keeps the imminent ones, like isImminent', () {
+    test('inicios próximos keeps future starts and the last ten minutes, '
+        'like isStartingSoon', () {
       expect(
         passesView(ViewChoice.soon, start: '10:15', end: '11:00', now: now),
         isTrue,
+      );
+      expect(
+        passesView(ViewChoice.soon, start: '20:00', end: '21:00', now: now),
+        isTrue,
+      );
+      expect(
+        passesView(ViewChoice.soon, start: '10:00', end: '11:30', now: now),
+        isTrue,
+      );
+      expect(
+        passesView(ViewChoice.soon, start: '09:54', end: '11:30', now: now),
+        isFalse,
       );
       expect(
         passesView(ViewChoice.soon, start: '09:30', end: '11:30', now: now),
@@ -213,24 +226,28 @@ void main() {
     });
   });
 
-  group('isImminent', () {
+  group('isStartingSoon', () {
     final now = DateTime(2026, 1, 1, 10, 5);
 
-    test('a start within the next fifteen minutes is imminent', () {
-      expect(isImminent('10:06', now), isTrue); // a minute away
-      expect(isImminent('10:15', now), isTrue); // ten
-      expect(isImminent('10:20', now), isTrue); // exactly fifteen — still in
-      expect(isImminent('10:21', now), isFalse); // a minute too far
-      expect(isImminent('11:00', now), isFalse); // much later
+    test('every future start counts, however far ahead', () {
+      expect(isStartingSoon('10:06', now), isTrue); // a minute away
+      expect(isStartingSoon('10:15', now), isTrue);
+      expect(isStartingSoon('11:00', now), isTrue);
+      expect(isStartingSoon('20:00', now), isTrue); // the last class
     });
 
-    test('the clock and the start are both needed, strictly future', () {
-      expect(isImminent('10:05', now), isFalse); // the clock itself: under way
-      expect(isImminent('10:00', now), isFalse); // already started
-      expect(isImminent('09:30', now), isFalse); // long over
-      expect(isImminent(null, now), isFalse);
-      expect(isImminent('—', now), isFalse);
-      expect(isImminent('Recuperación', now), isFalse);
+    test('the clock and the ten minutes before it still count', () {
+      expect(isStartingSoon('10:05', now), isTrue); // the clock itself
+      expect(isStartingSoon('10:00', now), isTrue); // five minutes ago
+      expect(isStartingSoon('09:55', now), isTrue); // exactly ten — still in
+      expect(isStartingSoon('09:54', now), isFalse); // a minute too old
+      expect(isStartingSoon('09:30', now), isFalse); // long over
+    });
+
+    test('no start, or no parseable one, never counts', () {
+      expect(isStartingSoon(null, now), isFalse);
+      expect(isStartingSoon('—', now), isFalse);
+      expect(isStartingSoon('Recuperación', now), isFalse);
     });
   });
 }

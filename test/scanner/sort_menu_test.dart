@@ -157,9 +157,9 @@ void main() {
     expect(_preset(presets[0].name), findsNothing);
     // The sort criteria and the four section titles of the Filtros tab.
     expect(find.text('Orden'), findsOneWidget);
-    expect(find.text('Tipo de aula'), findsOneWidget);
-    expect(find.text('Qué ver'), findsOneWidget);
-    expect(find.text('Estado'), findsOneWidget);
+    expect(find.text('Tipo de espacio'), findsOneWidget);
+    expect(find.text('Momento'), findsOneWidget);
+    expect(find.text('Ocupación'), findsOneWidget);
     expect(_row(SortMode.timeThenRoom), findsOneWidget);
     expect(_row(SortMode.roomThenTime), findsOneWidget);
   });
@@ -332,78 +332,6 @@ void main() {
     expect(_ticked(tester, _choice('state', 'free')), isTrue);
     expect(_ticked(tester, _choice('state', 'busy')), isFalse);
     expect(viewModel.state, StateChoice.free);
-  });
-
-  testWidgets('restores the whole choice from either tab', (tester) async {
-    final viewModel = _viewModel();
-
-    await _openMenu(tester, viewModel);
-
-    // Scattered from the defaults on both tabs: a preset applied…
-    await tester.tap(_preset(presets[1].name));
-    await tester.pump();
-    expect(viewModel.choice, presets[1].settings);
-
-    // …and the direction flipped over on Filtros, which puts the
-    // combination off every preset again.
-    await tester.tap(find.text('Filtros'));
-    await tester.pumpAndSettle();
-    await tester.tap(_row(SortMode.timeThenRoom));
-    await tester.pump();
-    expect(viewModel.sortOrder, SortOrder.descending);
-    expect(viewModel.activePreset, isNull);
-
-    // The restore button sits under the header, on offer whichever tab
-    // is open.
-    final restore = find.byKey(const ValueKey('restore-defaults'));
-    expect(restore, findsOneWidget);
-
-    await tester.tap(restore);
-    await tester.pump();
-
-    // One tap gives the whole choice back, the sheet still up to show it:
-    // every section ticked with its default and the criteria arrowed up.
-    expect(viewModel.choice, ScanSettings.defaults);
-    expect(
-      find.descendant(
-        of: _choice('roomType', 'labs'),
-        matching: find.byIcon(Icons.check),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: _choice('state', 'busy'),
-        matching: find.byIcon(Icons.check),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: _row(SortMode.timeThenRoom),
-        matching: find.byIcon(Icons.arrow_upward),
-      ),
-      findsOneWidget,
-    );
-    expect(find.byIcon(Icons.arrow_downward), findsNothing);
-    expect(find.byType(BottomSheet), findsOneWidget);
-
-    // Over on Presets the defaults light `Laboratorios por empezar` again
-    // — they are exactly its choice — and the button came along to the
-    // other tab, with `Personalizado` dark once more.
-    await tester.tap(find.text('Presets'));
-    await tester.pumpAndSettle();
-
-    expect(restore, findsOneWidget);
-    expect(tester.widget<ListTile>(_custom()).selected, isFalse);
-    expect(_ticked(tester, _custom()), isFalse);
-    for (final preset in presets) {
-      expect(
-        _ticked(tester, _preset(preset.name)),
-        identical(preset, presets[0]),
-        reason: preset.name,
-      );
-    }
   });
 
   testWidgets('tapping the dimmed part of the screen dismisses the sheet', (

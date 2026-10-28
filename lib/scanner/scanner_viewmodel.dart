@@ -12,7 +12,7 @@ import 'package:sched_scan/schedule/schedule_parser.dart';
 
 class ScannerViewModel extends ChangeNotifier {
   /// [clock] reads the current time for the `Ahora` and
-  /// `A punto de comenzar` views and [settings] hands back the persisted
+  /// `Inicios próximos` views and [settings] hands back the persisted
   /// choice once, synchronously, at construction — so the app opens
   /// already wearing it; tests inject their own so neither the clock nor
   /// the storage is tied to the wall clock or the platform.
@@ -52,7 +52,7 @@ class ScannerViewModel extends ChangeNotifier {
   /// The scanned slots grouped by block — `Bloque A` … `Bloque K`,
   /// alphabetical and only the blocks that actually occur — rebuilt from
   /// [entries] with the current choice on every scan, every sort change
-  /// and every change to [state]: the `Estado` choice decides which
+  /// and every change to [state]: the `Ocupación` choice decides which
   /// slots are cards at all (`Solo ocupadas` by default, so free slots
   /// are out, and so is any room left with nothing but free ones). Rooms
   /// with no block letter keep their own single section after the blocks.
@@ -60,9 +60,8 @@ class ScannerViewModel extends ChangeNotifier {
   List<EntrySection> get sectionsByBlock => _sectionsByBlock;
 
   /// The whole current choice — sort and the three filter sections — the
-  /// persisted value, [ScanSettings.defaults] on a fresh install and
-  /// after [restoreDefaults]. Every setter below goes through
-  /// [_adoptChoice]; nothing else writes it.
+  /// persisted value, [ScanSettings.defaults] on a fresh install. Every
+  /// setter below goes through [_adoptChoice]; nothing else writes it.
   ScanSettings _choice;
   ScanSettings get choice => _choice;
 
@@ -72,13 +71,13 @@ class ScannerViewModel extends ChangeNotifier {
   /// Which end the time ordering starts from (see [SortOrder]).
   SortOrder get sortOrder => _choice.sortOrder;
 
-  /// The `Tipo de aula` section's choice.
+  /// The `Tipo de espacio` section's choice.
   RoomTypeChoice get roomType => _choice.roomType;
 
-  /// The `Qué ver` section's choice.
+  /// The `Momento` section's choice.
   ViewChoice get view => _choice.view;
 
-  /// The `Estado` section's choice.
+  /// The `Ocupación` section's choice.
   StateChoice get state => _choice.state;
 
   /// The preset in effect, or null while the combination is a custom one
@@ -89,28 +88,26 @@ class ScannerViewModel extends ChangeNotifier {
   void setSort(SortMode mode, SortOrder order) =>
       _adoptChoice(_choice.copyWith(sortMode: mode, sortOrder: order));
 
-  /// Puts the `Tipo de aula` section on [choice] — rebuilding
+  /// Puts the `Tipo de espacio` section on [choice] — rebuilding
   /// [sectionsByBlock] with it, like every other choice change.
   void setRoomType(RoomTypeChoice choice) =>
       _adoptChoice(_choice.copyWith(roomType: choice));
 
-  /// Puts the `Qué ver` section on [choice].
+  /// Puts the `Momento` section on [choice].
   void setView(ViewChoice choice) =>
       _adoptChoice(_choice.copyWith(view: choice));
 
-  /// Puts the `Estado` section on [choice] — this one alone decides which
+  /// Puts the `Ocupación` section on [choice] — this one alone decides which
   /// entries exist as cards, so the rebuild it triggers reshapes
   /// [sectionsByBlock] and, with it, the chips.
   void setState(StateChoice choice) =>
       _adoptChoice(_choice.copyWith(state: choice));
 
-  /// Applies a preset in one tap: sort and all three sections at once.
-  void applyPreset(Preset preset) => _adoptChoice(preset.settings);
-
-  /// The choice back to the defaults — time-then-room ascending, the labs
-  /// starting soon, booked slots only. The chip selection is left alone:
+  /// Applies a preset in one tap: sort and all three sections at once —
+  /// the way back to the defaults too, since a fresh install starts on the
+  /// `Laboratorios por empezar` preset. The chip selection is left alone:
   /// [clearSelection] is the way to empty that.
-  void restoreDefaults() => _adoptChoice(ScanSettings.defaults);
+  void applyPreset(Preset preset) => _adoptChoice(preset.settings);
 
   /// Takes on [next] — the sections rebuilt with it (the [state] choice
   /// decides which slots are cards, the sort how they are grouped), the
@@ -146,9 +143,9 @@ class ScannerViewModel extends ChangeNotifier {
   /// What the card list renders: no section while nothing is selected — the
   /// view then shows its "Selecciona un bloque" prompt — and the selected
   /// ones once a chip has been picked, each stripped of the cards the
-  /// `Tipo de aula` and `Qué ver` choices keep out (`Estado` was already
-  /// applied when the sections were built). A room (or a whole section)
-  /// left without a card goes with them.
+  /// `Tipo de espacio` and `Momento` choices keep out (`Ocupación` was
+  /// already applied when the sections were built). A room (or a whole
+  /// section) left without a card goes with them.
   List<EntrySection> get visibleSectionsByBlock {
     if (_selectedSections.isEmpty) return const [];
     final visible = <EntrySection>[];
@@ -197,7 +194,7 @@ class ScannerViewModel extends ChangeNotifier {
   }
 
   /// One card against the two per-entry choices: a room of the picked
-  /// kind, in the part of the day the `Qué ver` choice asks for.
+  /// kind, in the part of the day the `Momento` choice asks for.
   bool _passes(ScheduleEntry slot, DateTime now) =>
       passesRoomType(_choice.roomType, room: slot.room) &&
       passesView(_choice.view, start: slot.start, end: slot.end, now: now);
@@ -236,8 +233,8 @@ class ScannerViewModel extends ChangeNotifier {
 
   /// Whether the filters are what emptied the card list: a block is
   /// selected, but every card in the selection was kept out — a lab-less
-  /// block under `Laboratorios`, a room with nothing underway under
-  /// `Ahora`, one with nothing starting soon under `A punto de comenzar`.
+  /// block under `Solo laboratorios`, a room with nothing underway under
+  /// `Ahora`, one with nothing opening soon under `Inicios próximos`.
   /// The view then says so instead of asking for another block.
   bool get typeFilteredOut =>
       _selectedSections.isNotEmpty && visibleSectionsByBlock.isEmpty;
@@ -253,7 +250,7 @@ class ScannerViewModel extends ChangeNotifier {
     _sectionsByBlock = _buildSections();
   }
 
-  /// The entries of [_entries] the `Estado` choice keeps — booked slots
+  /// The entries of [_entries] the `Ocupación` choice keeps — booked slots
   /// by default — in table order, grouped the way the current sort asks
   /// for. This is the one choice that decides which slots are cards at
   /// all; the other two narrow the list later, per entry.

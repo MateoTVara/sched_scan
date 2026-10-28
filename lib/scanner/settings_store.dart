@@ -15,9 +15,8 @@ class ScanSettings {
     required this.state,
   });
 
-  /// What a fresh install starts from, and what
-  /// `ScannerViewModel.restoreDefaults` gives back: the labs starting
-  /// soon, booked slots only, earliest first — the `Laboratorios por
+  /// What a fresh install starts from: the labs still to start or just
+  /// started, booked slots only, earliest first — the `Laboratorios por
   /// empezar` preset's choice, so a fresh install opens already under a
   /// named preset. Written out as a literal rather than read off
   /// `presets[0]`: `preset.dart` imports this library, and the other way

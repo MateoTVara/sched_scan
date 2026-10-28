@@ -24,15 +24,15 @@ class Preset {
   final ScanSettings settings;
 }
 
-/// The presets on offer, in the order the menu lists them: the labs about
+/// The presets on offer, in the order the menu lists them: the labs still
 /// to start first — the app's default choice, so a fresh install opens
-/// already under it — then the free-now views, then the whole booked day.
-/// Each is time-then-room ascending — a preset is a glance, and a glance
-/// reads in time order.
+/// already under it — then the two free-now views, then the whole booked
+/// day. A preset carries its own sort: the upcoming list and the day view
+/// read in time order, the free-now lists group by room first.
 const List<Preset> presets = [
   Preset(
     name: 'Laboratorios por empezar',
-    description: 'Clases de laboratorio que empiezan en los próximos 15 min',
+    description: 'Aún no empiezan o empezaron hace menos de 10 min',
     settings: ScanSettings(
       sortMode: SortMode.timeThenRoom,
       sortOrder: SortOrder.ascending,
@@ -43,9 +43,9 @@ const List<Preset> presets = [
   ),
   Preset(
     name: 'Aulas libres ahora',
-    description: 'Aulas sin clase en este momento',
+    description: 'Aulas sin clase en este momento, por aula y hora',
     settings: ScanSettings(
-      sortMode: SortMode.timeThenRoom,
+      sortMode: SortMode.roomThenTime,
       sortOrder: SortOrder.ascending,
       roomType: RoomTypeChoice.rooms,
       view: ViewChoice.now,
@@ -54,9 +54,9 @@ const List<Preset> presets = [
   ),
   Preset(
     name: 'Laboratorios libres ahora',
-    description: 'Laboratorios sin clase en este momento',
+    description: 'Laboratorios sin clase en este momento, por aula y hora',
     settings: ScanSettings(
-      sortMode: SortMode.timeThenRoom,
+      sortMode: SortMode.roomThenTime,
       sortOrder: SortOrder.ascending,
       roomType: RoomTypeChoice.labs,
       view: ViewChoice.now,
@@ -64,8 +64,8 @@ const List<Preset> presets = [
     ),
   ),
   Preset(
-    name: 'Todas no libres',
-    description: 'Todas las aulas con clase',
+    name: 'Horario del día',
+    description: 'Todas las clases del día, por hora y aula',
     settings: ScanSettings(
       sortMode: SortMode.timeThenRoom,
       sortOrder: SortOrder.ascending,

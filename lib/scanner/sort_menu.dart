@@ -28,11 +28,9 @@ Future<void> showSortMenu(BuildContext context, ScannerViewModel viewModel) {
 /// and the three radio-style filter sections under `Filtros` — reading
 /// the current choice from [viewModel] and writing it back through
 /// [ScannerViewModel.applyPreset], [ScannerViewModel.setSort] and the
-/// [ScanFilters] setters, so the choices never live here. Under the
-/// header, on offer for both tabs, the restore button gives everything
-/// back to its defaults ([ScannerViewModel.restoreDefaults]). The tab
-/// index is the only state the widget keeps: transient UI state,
-/// `Presets` first because that is what a glance reaches for.
+/// [ScanFilters] setters, so the choices never live here. The tab index is
+/// the only state the widget keeps: transient UI state, `Presets` first
+/// because that is what a glance reaches for.
 class SortMenu extends StatefulWidget {
   const SortMenu({super.key, required this.viewModel});
 
@@ -141,8 +139,8 @@ class _SortMenuState extends State<SortMenu>
   }
 
   static String _labelOf(SortMode mode) => switch (mode) {
-    SortMode.roomThenTime => 'Por sala y hora',
-    SortMode.timeThenRoom => 'Por hora y sala',
+    SortMode.roomThenTime => 'Por aula y hora',
+    SortMode.timeThenRoom => 'Por hora y aula',
   };
 
   /// One option of a filter section: tinted and ticked while it is the
@@ -224,7 +222,7 @@ class _SortMenuState extends State<SortMenu>
     return [
       _sectionTitle(context, 'Orden'),
       for (final mode in SortMode.values) _row(context, mode),
-      _sectionTitle(context, 'Tipo de aula'),
+      _sectionTitle(context, 'Tipo de espacio'),
       for (final choice in RoomTypeChoice.values)
         _choiceRow(
           context,
@@ -234,7 +232,7 @@ class _SortMenuState extends State<SortMenu>
           active: filters.roomType == choice,
           onSelect: () => filters.setRoomType(choice),
         ),
-      _sectionTitle(context, 'Qué ver'),
+      _sectionTitle(context, 'Momento'),
       for (final choice in ViewChoice.values)
         _choiceRow(
           context,
@@ -244,7 +242,7 @@ class _SortMenuState extends State<SortMenu>
           active: filters.view == choice,
           onSelect: () => filters.setView(choice),
         ),
-      _sectionTitle(context, 'Estado'),
+      _sectionTitle(context, 'Ocupación'),
       for (final choice in StateChoice.values)
         _choiceRow(
           context,
@@ -279,19 +277,6 @@ class _SortMenuState extends State<SortMenu>
                     Tab(text: 'Presets'),
                     Tab(text: 'Filtros'),
                   ],
-                ),
-                // One button for both tabs — the whole choice back to its
-                // defaults — sitting above the tab body, so it is on offer
-                // whichever tab is open. The sheet stays up, so the effect
-                // is right there to compare.
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    key: const ValueKey('restore-defaults'),
-                    onPressed: widget.viewModel.restoreDefaults,
-                    icon: const Icon(Icons.restart_alt),
-                    label: const Text('Restaurar valores predeterminados'),
-                  ),
                 ),
                 Flexible(
                   child: AnimatedBuilder(

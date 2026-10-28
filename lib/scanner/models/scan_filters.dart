@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-/// Which rooms the list shows — the menu's `Tipo de aula` section.
+/// Which rooms the list shows — the menu's `Tipo de espacio` section.
 ///
 /// The campus splits into its computing labs ([isComputeLab]) and every
 /// other room; [all] is both. One choice per section, so a combination
@@ -8,13 +8,13 @@ import 'package:flutter/foundation.dart';
 /// offer.
 enum RoomTypeChoice {
   /// Every room, labs included.
-  all('Todas las aulas'),
-
-  /// Only the campus's computing labs.
-  labs('Laboratorios'),
+  all('Todos los espacios'),
 
   /// Every room that is not a compute lab.
-  rooms('Solo aulas');
+  rooms('Solo aulas'),
+
+  /// Only the campus's computing labs.
+  labs('Solo laboratorios');
 
   const RoomTypeChoice(this.label);
 
@@ -26,16 +26,17 @@ enum RoomTypeChoice {
   RoomTypeChoice get next => values[(index + 1) % values.length];
 }
 
-/// What the list shows of the day — the menu's `Qué ver` section.
+/// What the list shows of the day — the menu's `Momento` section.
 enum ViewChoice {
   /// Whatever the other choices keep, whole day included.
-  all('Todo'),
+  all('Todo el día'),
 
   /// Only the sessions running right now ([isOngoing]).
   now('Ahora'),
 
-  /// Only the sessions starting within the next [upcomingWindow].
-  soon('A punto de comenzar');
+  /// Only starts still ahead, plus the ones that began within
+  /// [recentlyStartedWindow] ([isStartingSoon]).
+  soon('Inicios próximos');
 
   const ViewChoice(this.label);
 
@@ -47,7 +48,7 @@ enum ViewChoice {
   ViewChoice get next => values[(index + 1) % values.length];
 }
 
-/// Free or booked — the menu's `Estado` section.
+/// Free or booked — the menu's `Ocupación` section.
 enum StateChoice {
   /// The free and the booked slots alike.
   all('Libres y ocupadas'),
@@ -68,9 +69,9 @@ enum StateChoice {
   StateChoice get next => values[(index + 1) % values.length];
 }
 
-/// How far ahead the [ViewChoice.soon] view looks: a session starting
-/// within this many minutes from the clock is about to begin.
-const Duration upcomingWindow = Duration(minutes: 15);
+/// How long after its start a session still counts as opening soon: a
+/// start this many minutes old is still included.
+const Duration recentlyStartedWindow = Duration(minutes: 10);
 
 /// Whether a room is one of the campus's computing labs, matched on the
 /// `<letter>-<digits>` code printed in its name (`B-101 (…)`,
@@ -113,15 +114,17 @@ bool isOngoing(String? start, String? end, DateTime now) {
   return closes == null || minutes <= (wraps ? closes + 24 * 60 : closes);
 }
 
-/// Whether a session starts within the next [upcomingWindow] at [now] —
-/// strictly in the future (one already underway is [isOngoing]'s, not
-/// this) and no further than fifteen minutes out. No printed time, or no
-/// parseable one, never counts.
-bool isImminent(String? start, DateTime now) {
+/// Whether a session still counts as opening soon at [now]: its printed
+/// start is still ahead (any time later today) or began within the last
+/// [recentlyStartedWindow]. The end time is not consulted — this is a
+/// start-time view, so a session whose printed end has already passed
+/// still counts while its start sits inside the window. No printed start,
+/// or no parseable one, never counts.
+bool isStartingSoon(String? start, DateTime now) {
   final begins = _minutesOf(start);
   if (begins == null) return false;
-  final delta = begins - (now.hour * 60 + now.minute);
-  return delta > 0 && delta <= upcomingWindow.inMinutes;
+  final minutes = now.hour * 60 + now.minute;
+  return begins >= minutes - recentlyStartedWindow.inMinutes;
 }
 
 int? _minutesOf(String? time) {
@@ -134,7 +137,7 @@ int? _minutesOf(String? time) {
   return hour * 60 + minute;
 }
 
-/// Whether a room survives the `Tipo de aula` choice.
+/// Whether a room survives the `Tipo de espacio` choice.
 bool passesRoomType(RoomTypeChoice choice, {required String room}) =>
     switch (choice) {
       RoomTypeChoice.all => true,
@@ -142,7 +145,7 @@ bool passesRoomType(RoomTypeChoice choice, {required String room}) =>
       RoomTypeChoice.rooms => !isComputeLab(room),
     };
 
-/// Whether a slot survives the `Qué ver` choice at [now].
+/// Whether a slot survives the `Momento` choice at [now].
 bool passesView(
   ViewChoice choice, {
   required String? start,
@@ -151,10 +154,10 @@ bool passesView(
 }) => switch (choice) {
   ViewChoice.all => true,
   ViewChoice.now => isOngoing(start, end, now),
-  ViewChoice.soon => isImminent(start, now),
+  ViewChoice.soon => isStartingSoon(start, now),
 };
 
-/// Whether a slot survives the `Estado` choice.
+/// Whether a slot survives the `Ocupación` choice.
 bool passesState(StateChoice choice, {required bool isFree}) =>
     switch (choice) {
       StateChoice.all => true,
@@ -180,13 +183,13 @@ class ScanFilters {
   final ViewChoice view;
   final StateChoice state;
 
-  /// Puts the `Tipo de aula` section on [RoomTypeChoice] — a no-op when
+  /// Puts the `Tipo de espacio` section on [RoomTypeChoice] — a no-op when
   /// it is the choice already in effect.
   final ValueChanged<RoomTypeChoice> setRoomType;
 
-  /// Puts the `Qué ver` section on [ViewChoice].
+  /// Puts the `Momento` section on [ViewChoice].
   final ValueChanged<ViewChoice> setView;
 
-  /// Puts the `Estado` section on [StateChoice].
+  /// Puts the `Ocupación` section on [StateChoice].
   final ValueChanged<StateChoice> setState;
 }
