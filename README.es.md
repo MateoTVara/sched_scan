@@ -2,58 +2,93 @@
 
 [English](README.md)
 
-Lee un horario en pantalla en lugar de forzar la vista:
+Lee un horario en pantalla en lugar de forzar la vista: elige un horario en
+**PDF** y su capa de texto se extrae y se *parsea geométricamente* en entradas
+estructuradas — cada hueco reservado se vuelve una tarjeta.
 
-- **PDF — la ruta soportada.** Su capa de texto se extrae y la *parsea
-  geométricamente* en entradas estructuradas: cada hueco reservado se vuelve
-  una tarjeta, y los huecos libres (`LIBRE`) no se vuelven tarjeta mientras
-  la fila *Libres* los excluye (su defecto).
-- **Imagen — todavía no usable.** OCR en el dispositivo (Google ML Kit); un
-  escaneo de imagen solo muestra texto plano, y ML Kit solo viene para
-  Android/iOS. Ver [Notas de plataforma y licencia](#notas-de-plataforma-y-licencia).
+Las tarjetas se agrupan por bloque (`Bloque A` … `Bloque K`), alfabéticamente y
+solo los bloques que aparecen; las aulas sin letra de bloque conservan su propia
+sección después. Los encabezados son fijos (sticky): el del bloque ocupa la parte
+superior mientras su sección está a la vista y se va empujado al terminar, con el
+subtítulo de aula u hora justo debajo. Los huecos libres (`LIBRE`) no se vuelven
+tarjeta mientras *Ocupación* deje solo las reservas — *Solo ocupadas*, su defecto.
 
-Las tarjetas se agrupan por bloque (`Bloque A` … `Bloque K`) con encabezados
-fijos (sticky): el encabezado del bloque abarca sus subtítulos (las horas por
-defecto, los nombres de aula en *Por sala y hora*), cada subtítulo se fija
-mientras sus tarjetas están a la vista, y en orden por hora cada tarjeta
-muestra su propia aula. Una barra flotante de chips filtra la lista: al
-bajar se oculta con el contenido y al subir reaparece a cualquier altura. Al
-inicio nada está seleccionado, así que la lista arranca con un aviso
-`Selecciona un bloque.` y solo muestra los bloques (chip con la letra) o las
-aulas sin bloque (chip con el nombre) que elijas — al deseleccionar el último
-vuelve el aviso, y un horario sin reservas muestra
-`Sin reservas: todas las aulas están libres.`
+Una barra flotante de chips filtra la lista: al bajar se oculta con el contenido y
+al subir reaparece a cualquier altura. Al inicio nada está seleccionado, así que
+la lista arranca con un aviso `Selecciona un bloque.`; al elegir un bloque (chip
+con la letra) o un aula sin bloque (chip con el nombre) aparece su contenido, y un
+horario sin reservas muestra `Sin reservas: todas las aulas están libres.` en su
+lugar. Una selección que los filtros vacían muestra
+`Ninguna aula coincide con el filtro.`. La selección es de cada escaneo: uno
+nuevo empieza sin nada elegido.
 
-Un botón `sort` en la AppBar (aparece cuando ya hay algo escaneado) desliza
-un menú desde el borde inferior sobre la pantalla atenudida. Su encabezado
-alterna entre *Orden* y *Filtros*. *Orden* lista los
-dos criterios directamente — *Por sala y hora* mantiene los subtítulos de cada
-bloque como nombres de aula con las horas dentro, *Por hora y sala* (el
-defecto) reagrupa
-el bloque por hora de inicio para que sus subtítulos sean las horas
-(`08:00`, `10:00`, …) y cada tarjeta muestre su propia aula. El criterio en
-vigencia lleva una flecha (`↑` ascendente, `↓` descendente): tocarlo invierte
-la dirección, tocar el otro cambia de criterio con la dirección tal cual. Solo
-se mueven las horas: los bloques siguen en
-`A … K` y las aulas conservan su orden de tabla.
+## El menú
 
-*Filtros* trae tres filas fijas, cada toque ciclando su fila entre nada → ✓
-incluida → ✕ excluida y de vuelta: *Laboratorio de Cómputo* (los laboratorios
-de cómputo del campus — todo el bloque B más C-203/204/303/304 y
-J-108/205/206/210–215, casados por el código del aula), *Libres* (los huecos
-libres solo se vuelven tarjeta con ✓ — excluida por defecto, así que los
-chips listan exactamente las aulas con reservas) y *Últimos 15 min* (una
-sesión empezada hace más de un cuarto de hora se oculta — a las 10:05 la
-tarjeta de 09:30 desaparece, la de 10:00 se queda; las horas posteriores no
-envejecen). Las filas se combinan con los chips de arriba — una selección
-vaciada por el filtro muestra `Ninguna aula coincide con el filtro.`. La app
-arranca con los defectos: reservas de laboratorios de cómputo frescas en
-orden por hora. El orden y las marcas vuelven a sus defectos con el
-siguiente escaneo.
+Un botón `sort` en la AppBar (aparece cuando ya hay algo escaneado) desliza un
+menú desde el borde inferior sobre la pantalla atenuada. Su encabezado alterna
+entre *Presets* y *Filtros*.
 
-Toda la interfaz está en
-español, y la app arranca en modo PDF — un conmutador imagen/PDF está en la
-AppBar para el día en que la imagen funcione.
+### Presets
+
+Un toque aplica una elección completa — orden y las tres secciones de filtros — y
+la hoja sigue abierta, así que la lista cambia justo detrás. La fila en vigor
+lleva la marca; cuando la combinación ya no coincide con ningún preset, la marca
+pasa a `Personalizado` (no aplica nada: salta a *Filtros*, donde se mezcla la
+combinación).
+
+| Preset | Qué muestra | Elección |
+| --- | --- | --- |
+| *Laboratorios por empezar* | Aún no empiezan o empezaron hace menos de 10 min | `Solo laboratorios` · `Inicios próximos` · `Solo ocupadas` · `Por hora y aula` ↑ |
+| *Aulas libres ahora* | Aulas sin clase en este momento, por aula y hora | `Solo aulas` · `Ahora` · `Solo libres` · `Por aula y hora` ↑ |
+| *Laboratorios libres ahora* | Laboratorios sin clase en este momento, por aula y hora | `Solo laboratorios` · `Ahora` · `Solo libres` · `Por aula y hora` ↑ |
+| *Horario del día* | Todas las clases del día, por hora y aula | `Todos los espacios` · `Todo el día` · `Solo ocupadas` · `Por hora y aula` ↑ |
+
+*Laboratorios por empezar* es lo que trae una instalación nueva, y es la
+instantánea completa de `ScanSettings.defaults`: elegirlo es también la forma de
+volver a los valores predeterminados.
+
+### Filtros
+
+Bajo el encabezado `Orden` están los dos criterios de orden, una fila cada uno:
+*Por aula y hora* mantiene los subtítulos de cada bloque como nombres de aula con
+las horas dentro, *Por hora y aula* (el defecto) reagrupa el bloque por hora de
+inicio para que sus subtítulos sean las horas (`08:00`, `10:00`, …) y cada
+tarjeta muestre su propia aula. La fila en vigor lleva una flecha (`↑`
+ascendente, `↓` descendente): tocarla invierte la dirección, tocar la otra cambia
+de criterio con la dirección tal cual. Solo se mueven las horas: los bloques
+siguen en `A … K` y las aulas conservan su orden de tabla en ambos casos.
+
+Debajo vienen tres secciones de elección única — una opción por sección, así que
+una combinación que por sí sola pudiera vaciar la lista no se ofrece:
+
+- **`Tipo de espacio`** — *Todos los espacios* (el defecto) / *Solo aulas* /
+  *Solo laboratorios*. Los laboratorios se reconocen por el código
+  `<letra>-<dígitos>` del aula: todo el bloque B, más C-203, C-204, C-303, C-304
+  y J-108, J-205, J-206, J-210 … J-215. El descriptor entre paréntesis no se
+  consulta — la lista es la del campus, no la del PDF.
+- **`Momento`** — *Todo el día* / *Ahora* / *Inicios próximos* (el defecto):
+  - *Ahora* deja las sesiones en curso a la hora actual — ya empezadas y
+    todavía sin cerrar. Un hueco sin hora de fin impresa corre desde su inicio;
+    uno sin inicio nunca aparece; un rango como `22:00 – 06:00` se lee como
+    pasado de medianoche.
+  - *Inicios próximos* deja todo inicio que aún está por llegar ese día, más los
+    que empezaron hace menos de diez minutos (a las 10:05, un inicio de 20:00
+    aparece, uno de 10:00 sigue apareciendo, uno de 09:54 ya no). La hora de fin
+    no se consulta — es una vista por hora de inicio.
+- **`Ocupación`** — *Libres y ocupadas* / *Solo libres* / *Solo ocupadas* (el
+  defecto): los huecos libres, los reservados, o ambos. Es la única sección que
+  cambia *qué* tarjetas existen, así que los chips la siguen — un aula que se
+  queda sin tarjetas sale también de la lista.
+
+Las dos opciones por tarjeta estrechan las tarjetas *dentro* de las secciones
+elegidas: los chips eligen secciones, las opciones filtran lo que hay en ellas.
+
+## Persistencia
+
+El orden y las tres opciones de filtro son de la app: sobreviven a los escaneos y
+a los reinicios, y se guardan en el momento en que cambian. La selección de chips
+no: apunta al documento en pantalla, así que cada escaneo empieza sin nada
+elegido. Qué preset está en vigor se deriva de la elección, nunca se guarda.
 
 ## Primeros pasos
 
@@ -108,35 +143,30 @@ la compilación de Nix usa un conjunto de dependencias obsoleto.
 
 ## Notas de plataforma y licencia
 
-- **La entrada por imagen todavía no es usable.** El OCR pasa por Google ML
-  Kit, que solo trae implementaciones para **Android/iOS** — así que en las
-  compilaciones de Linux/web no funciona nada — y aunque el OCR corra, un
-  escaneo de imagen solo produce texto plano: el parser, las tarjetas, las
-  secciones y el filtro son solo para PDF. La app arranca en modo PDF, y esa
-  es la ruta que funciona.
-- La capa de texto del PDF se lee con `pdf_graphics` + `pdf_document` — ambos
-  **Apache-2.0**, Dart puro, sin paquetes comerciales en el árbol de
-  dependencias — y la misma ruta de código sirve para todas las plataformas
-  (la compilación web incluida).
+La capa de texto del PDF se lee con `pdf_graphics` + `pdf_document` — ambos
+**Apache-2.0**, Dart puro, sin paquetes comerciales en el árbol de dependencias
+— y la misma ruta de código sirve para todas las plataformas (la compilación web
+incluida). Toda la interfaz está en español; solo el título de la app se queda
+en inglés.
 
 ## Arquitectura
 
-Carpetas por feature bajo `lib/`, cada una con un dúo MVVM de viewmodel +
-vista (`ChangeNotifier`) — sin Riverpod/Bloc/Provider:
+Carpetas por feature bajo `lib/`, cada una con un dúo MVVM de viewmodel + vista
+(`ChangeNotifier`) — sin Riverpod/Bloc/Provider:
 
 ```
 lib/
-  main.dart    # raíz de la app; crea y destruye los viewmodels
-  scanner/     # despacho del escaneo (ML Kit o parser), lista de tarjetas, filtros, menú de orden y las tres filas
-  schedule/    # selección de archivos, capa de texto y parser de PDF (Dart puro), modelos, prompt
+  main.dart       # raíz de la app; prepara el almacén de ajustes, crea y destruye los viewmodels
+  scanner/        # despacho del escaneo, lista de tarjetas, barra de filtros, menú de orden, ajustes persistidos
+  schedule/       # selección de archivos, capa de texto y parser de PDF (Dart puro), modelos, prompt
 ```
 
 `ScheduleParser` convierte la geometría de las palabras del PDF en registros
 `ScheduleEntry` — Dart puro, sin Flutter — y `ScannerViewModel` los agrupa en
-las secciones que dibuja la lista. La lectura y el parseo corren en un
-isolate en segundo plano (`compute`), así que un horario largo nunca bloquea
-la UI. El cuerpo es un único `CustomScrollView`: cada vista emite slivers,
-con encabezados fijos de `sliver_tools`.
+las secciones que dibuja la lista. La lectura y el parseo corren en un isolate
+en segundo plano (`compute`), así que un horario largo nunca bloquea la UI. El
+cuerpo es un único `CustomScrollView`: cada vista emite slivers, con encabezados
+fijos de `sliver_tools`.
 
 ## Pruebas
 
@@ -144,12 +174,9 @@ con encabezados fijos de `sliver_tools`.
 flutter test
 ```
 
-Las pruebas reflejan `lib/` bajo `test/`: pruebas unitarias de los
-viewmodels (incluida una ida y vuelta del parser sobre
-`test/fixtures/sample.pdf`), pruebas puras del modelo de filtros (códigos de
-aula, la ventana de 15 minutos), y
-pruebas de widget para la lista de tarjetas,
-los encabezados fijos, la barra de filtros, los tres estados vacíos, el menú
-de orden con sus tres filas de filtro, y el prompt inicial. La rama de imágenes
-pasa por ML Kit, que no
-tiene implementación en el host, así que no se prueba con unidad.
+Las pruebas reflejan `lib/` bajo `test/`: pruebas unitarias de los viewmodels
+sobre `test/fixtures/sample_01.pdf` … `sample_05.pdf` (ida y vuelta del parser,
+orden, filtros, persistencia), pruebas puras de los modelos de presets y de las
+reglas de filtro (códigos de aula, las ventanas de `Ahora` e `Inicios
+próximos`), y pruebas de widget para la lista de tarjetas, los encabezados
+fijos, la barra de chips y sus tres estados vacíos, y el menú de dos pestañas.
