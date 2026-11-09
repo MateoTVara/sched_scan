@@ -1,6 +1,7 @@
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sched_scan/scanner/models/preset.dart';
+import 'package:sched_scan/scanner/models/room_block.dart';
 import 'package:sched_scan/scanner/models/scan_filters.dart';
 import 'package:sched_scan/scanner/models/section_filter.dart';
 import 'package:sched_scan/scanner/models/sort_mode.dart';
@@ -55,7 +56,9 @@ class ScannerViewModel extends ChangeNotifier {
   /// and every change to [state]: the `Ocupación` choice decides which
   /// slots are cards at all (`Solo ocupadas` by default, so free slots
   /// are out, and so is any room left with nothing but free ones). Rooms
-  /// with no block letter keep their own single section after the blocks.
+  /// the campus map knows keep their block even without a printed code;
+  /// rooms it does not recognise keep their own single section after the
+  /// blocks.
   List<EntrySection> _sectionsByBlock = const [];
   List<EntrySection> get sectionsByBlock => _sectionsByBlock;
 
@@ -105,8 +108,8 @@ class ScannerViewModel extends ChangeNotifier {
 
   /// Applies a preset in one tap: sort and all three sections at once —
   /// the way back to the defaults too, since a fresh install starts on the
-  /// `Laboratorios por empezar` preset. The chip selection is left alone:
-  /// [clearSelection] is the way to empty that.
+  /// `Laboratorios por empezar` preset. The chip pick is left alone: a
+  /// preset only changes the choice.
   void applyPreset(Preset preset) => _adoptChoice(preset.settings);
 
   /// Takes on [next] — the sections rebuilt with it (the [state] choice
@@ -121,46 +124,46 @@ class ScannerViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Writes the current choice back, if anywhere — the chips' selection
+  /// Writes the current choice back, if anywhere — the chips' pick
   /// is per scan and never stored. Fire and forget: the write is a
   /// platform-side map update, nothing the UI waits on.
   void _persist() => _settings?.write(_choice);
 
-  /// The titles of [_sectionsByBlock] picked in the filter row. Empty means
+  /// The title of the section picked in the filter row, or null while
   /// nothing is picked: [visibleSectionsByBlock] then comes back empty and
   /// the view shows its "Selecciona un bloque." prompt — the initial state,
-  /// and what a new scan resets to.
-  Set<String> _selectedSections = {};
+  /// and what a new scan resets to. One section at a time.
+  String? _selectedSection;
 
-  /// The filter row over [sectionsByBlock]: the same sections, the current
-  /// selection, and [toggleSection] to flip one.
+  /// The filter row over [sectionsByBlock]: the same sections, the one
+  /// picked, and [selectSection] to move the pick.
   SectionFilter get sectionFilter => SectionFilter(
     sections: _sectionsByBlock,
-    selected: Set.unmodifiable(_selectedSections),
-    toggle: toggleSection,
+    selected: _selectedSection,
+    select: selectSection,
   );
 
-  /// What the card list renders: no section while nothing is selected — the
-  /// view then shows its "Selecciona un bloque" prompt — and the selected
-  /// ones once a chip has been picked, each stripped of the cards the
+  /// What the card list renders: no section while nothing is picked — the
+  /// view then shows its "Selecciona un bloque" prompt — and the picked one
+  /// once a chip has been tapped, stripped of the cards the
   /// `Tipo de espacio` and `Momento` choices keep out (`Ocupación` was
-  /// already applied when the sections were built). A room (or a whole
-  /// section) left without a card goes with them.
+  /// already applied when the sections were built). A section left without
+  /// a card goes with them.
   List<EntrySection> get visibleSectionsByBlock {
-    if (_selectedSections.isEmpty) return const [];
+    if (_selectedSection == null) return const [];
     final visible = <EntrySection>[];
-    // Nothing to narrow with: the selection renders as it stands,
-    // sections included.
+    // Nothing to narrow with: the pick renders as it stands, section
+    // included.
     if (_choice.roomType == RoomTypeChoice.all &&
         _choice.view == ViewChoice.all) {
       for (final section in _sectionsByBlock) {
-        if (_selectedSections.contains(section.title)) visible.add(section);
+        if (section.title == _selectedSection) visible.add(section);
       }
       return visible;
     }
     final now = _clock();
     for (final section in _sectionsByBlock) {
-      if (!_selectedSections.contains(section.title)) continue;
+      if (section.title != _selectedSection) continue;
       final filtered = _passesFilters(section, now);
       if (filtered != null) visible.add(filtered);
     }
@@ -199,24 +202,10 @@ class ScannerViewModel extends ChangeNotifier {
       passesRoomType(_choice.roomType, room: slot.room) &&
       passesView(_choice.view, start: slot.start, end: slot.end, now: now);
 
-  /// Adds [title] to the selection or takes it out again — deselecting the
-  /// last one empties the selection, which brings the prompt back in place
-  /// of the cards.
-  void toggleSection(String title) {
-    if (!_selectedSections.remove(title)) {
-      _selectedSections.add(title);
-    }
-    notifyListeners();
-  }
-
-  /// Whether any chip is picked — the app bar's clear button follows it.
-  bool get hasSelection => _selectedSections.isNotEmpty;
-
-  /// Empties the chip selection in one go — every card goes back behind
-  /// the "Selecciona un bloque." prompt, the same as deselecting the picks
-  /// one by one.
-  void clearSelection() {
-    _selectedSections.clear();
+  /// Picks [title] as the one section shown, or clears the row when it is
+  /// already the pick — the prompt then comes back in place of the cards.
+  void selectSection(String title) {
+    _selectedSection = _selectedSection == title ? null : title;
     notifyListeners();
   }
 
@@ -231,22 +220,22 @@ class ScannerViewModel extends ChangeNotifier {
     setState: setState,
   );
 
-  /// Whether the filters are what emptied the card list: a block is
-  /// selected, but every card in the selection was kept out — a lab-less
-  /// block under `Solo laboratorios`, a room with nothing underway under
-  /// `Ahora`, one with nothing opening soon under `Inicios próximos`.
-  /// The view then says so instead of asking for another block.
+  /// Whether the filters are what emptied the card list: a section is
+  /// picked, but every card in it was kept out — a lab-less block under
+  /// `Solo laboratorios`, a room with nothing underway under `Ahora`, one
+  /// with nothing opening soon under `Inicios próximos`. The view then
+  /// says so instead of asking for another block.
   bool get typeFilteredOut =>
-      _selectedSections.isNotEmpty && visibleSectionsByBlock.isEmpty;
+      _selectedSection != null && visibleSectionsByBlock.isEmpty;
 
   /// Swaps in a fresh scan's entries and rebuilds the sections with them,
   /// under the choice as it stands — that is persisted now (see
   /// [_persist]) and outlives the scan. What a new scan *does* start over
-  /// is the filter row: the selection empties, so the prompt shows until
-  /// a chip is chosen.
+  /// is the filter row: the pick clears, so the prompt shows until a chip
+  /// is chosen.
   void _applyEntries(List<ScheduleEntry> entries) {
     _entries = entries;
-    _selectedSections = {};
+    _selectedSection = null;
     _sectionsByBlock = _buildSections();
   }
 
@@ -290,21 +279,14 @@ class ScannerViewModel extends ChangeNotifier {
     }
   }
 
-  /// The block a room belongs to: the `<letter>-<digit>` code printed in its
-  /// name — `AULA A-203` → `A`, `J-110A (…)` → `J`, `MÚLTIPLE C-202` → `C`.
-  /// The code has to start a word, so a hyphen inside one (`TALLER-2`) is not
-  /// a block. A room with no code (`LOSA DEPORTIVA`) belongs to none.
-  static final RegExp _blockCode = RegExp(r'(?:^|\s)([A-Z])-\d');
-
-  static String? _blockOf(String room) => _blockCode.firstMatch(room)?.group(1);
-
   /// The sub-heading cards without a printed time group under — always the
   /// last one of their block or room, whatever the direction.
   static const String _noTimeHeading = 'Sin hora';
 
   /// Blocks first, alphabetical and only the ones that occur; then the rooms
-  /// with no block letter, each keeping its own single heading. [mode] picks
-  /// what a block's sub-headings are (room names or start times) and [order]
+  /// the campus map does not recognise, each keeping its own single heading.
+  /// [mode] picks what a block's sub-headings are (room names or start times)
+  /// and [order]
   /// which end the time ordering starts from — never the order of the blocks
   /// themselves, nor of the rooms inside one.
   static List<EntrySection> _byBlock(
@@ -315,7 +297,7 @@ class ScannerViewModel extends ChangeNotifier {
     final blocks = <String, Map<String, List<ScheduleEntry>>>{};
     final loose = <String, List<ScheduleEntry>>{};
     for (final entry in slots) {
-      final block = _blockOf(entry.room);
+      final block = blockOf(entry.room);
       if (block == null) {
         loose.putIfAbsent(entry.room, () => []).add(entry);
       } else {

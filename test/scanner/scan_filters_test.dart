@@ -158,8 +158,6 @@ void main() {
       expect(isComputeLab('B-301'), isTrue);
       expect(isComputeLab('C-203'), isTrue);
       expect(isComputeLab('C-204'), isTrue);
-      expect(isComputeLab('C-303'), isTrue);
-      expect(isComputeLab('C-304'), isTrue);
       expect(isComputeLab('J-108'), isTrue);
       expect(isComputeLab('J-205'), isTrue);
       expect(isComputeLab('J-206'), isTrue);
@@ -172,6 +170,8 @@ void main() {
       expect(isComputeLab('AULA DE ENSAYO 01'), isFalse);
       expect(isComputeLab('MÚLTIPLE C-202'), isFalse);
       expect(isComputeLab('C-201'), isFalse);
+      expect(isComputeLab('C-303'), isFalse);
+      expect(isComputeLab('C-304'), isFalse);
       expect(
         isComputeLab('J-101 (LABORATORIO PLANTA DE TRATAMIENTO Y ENVASADO)'),
         isFalse,

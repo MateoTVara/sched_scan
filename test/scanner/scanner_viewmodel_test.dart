@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sched_scan/scanner/models/preset.dart';
+import 'package:sched_scan/scanner/models/room_block.dart';
 import 'package:sched_scan/scanner/models/scan_filters.dart';
 import 'package:sched_scan/scanner/models/sort_mode.dart';
 import 'package:sched_scan/scanner/scanner_viewmodel.dart';
@@ -15,10 +16,6 @@ const _samplePath = 'test/fixtures/sample_01.pdf';
 final _missing = File(_samplePath).existsSync()
     ? false
     : 'sample_01 pdf not found — place it at $_samplePath';
-
-/// The room-code regex the viewmodel groups blocks with, kept here so the
-/// test can check the result without duplicating the logic under test.
-final _blockCode = RegExp(r'(?:^|\s)([A-Z])-\d');
 
 /// The sample schedule as a picked file.
 XFile _sample() =>
@@ -62,7 +59,7 @@ bool _isSorted(List<ScheduleEntry> slots, SortOrder order) {
 }
 
 /// Walks the choice back to "nothing filters": every room, the whole
-/// day, both kinds of slot — so a test sees the selection's own effect
+/// day, both kinds of slot — so a test sees the pick's own effect
 /// instead of the defaults' (labs starting soon, booked only).
 void _noFilters(ScannerViewModel viewModel) {
   viewModel
@@ -208,28 +205,28 @@ void main() {
     final sections = viewModel.sectionsByBlock;
     expect(sections, isNotEmpty);
 
-    final blockLetters = <String>[];
+    final blockNames = <String>[];
     final loose = <String>[];
     var seenLoose = false;
     for (final section in sections) {
       if (section.rooms.isEmpty) {
-        // A room with no block letter keeps its own single heading, and only
-        // ever after the blocks.
+        // A room the campus map does not know keeps its own single heading,
+        // and only ever after the blocks.
         seenLoose = true;
         loose.add(section.title);
-        expect(_blockCode.hasMatch(section.title), isFalse);
+        expect(blockOf(section.title), isNull);
         continue;
       }
 
       expect(seenLoose, isFalse, reason: '${section.title} follows a room');
       expect(section.title, startsWith('Bloque '));
-      final letter = section.title.substring('Bloque '.length);
-      blockLetters.add(letter);
+      final block = section.title.substring('Bloque '.length);
+      blockNames.add(block);
       for (final room in section.rooms.keys) {
         expect(
-          _blockCode.firstMatch(room)?.group(1),
-          letter,
-          reason: '$room does not belong to block $letter',
+          blockOf(room),
+          block,
+          reason: '$room does not belong to block $block',
         );
       }
       // Blocks group rooms, so one heading over no rooms would be a lie.
@@ -238,13 +235,25 @@ void main() {
     }
 
     // Alphabetical, only the blocks that occur, and at least one of them.
-    expect(blockLetters, isNotEmpty);
-    expect(blockLetters, equals([...blockLetters]..sort()));
+    expect(blockNames, isNotEmpty);
+    expect(blockNames, equals([...blockNames]..sort()));
     // This sample has no F/G/H buildings; every other letter A…K has booked
-    // rooms, so the grouping must find all eight.
-    expect(blockLetters, ['A', 'B', 'C', 'D', 'E', 'I', 'J', 'K']);
-    // Rooms without a block letter still get their own section.
-    expect(loose, isNotEmpty);
+    // rooms, and the three sports rooms that do book sit under the named
+    // POLIDEPORTIVO block.
+    expect(blockNames, [
+      'A',
+      'B',
+      'C',
+      'D',
+      'E',
+      'I',
+      'J',
+      'K',
+      'POLIDEPORTIVO',
+    ]);
+    // Every room the sample prints is on the campus map, so no fallback
+    // section is left over.
+    expect(loose, isEmpty);
 
     // Every booked card lands in the block layout exactly once.
     expect(
@@ -254,7 +263,7 @@ void main() {
   }, skip: _missing);
 
   test(
-    'the section filter starts with nothing selected, showing no section',
+    'the section filter starts with nothing picked, showing no section',
     () async {
       final viewModel = _viewModel();
 
@@ -265,43 +274,49 @@ void main() {
       final sections = viewModel.sectionsByBlock;
       expect(sections, isNotEmpty);
 
-      // Nothing starts selected: the card list is empty, so the view shows
+      // Nothing starts picked: the card list is empty, so the view shows
       // its "Selecciona un bloque." prompt instead of every section.
-      expect(viewModel.sectionFilter.selected, isEmpty);
+      expect(viewModel.sectionFilter.selected, isNull);
       expect(viewModel.visibleSectionsByBlock, isEmpty);
 
       // Picking a section narrows the card list to it — the chip row keeps
-      // them all, so the pick can be undone...
+      // them all, so the pick can be moved or undone...
       final first = sections.first;
-      viewModel.toggleSection(first.title);
+      viewModel.selectSection(first.title);
       expect(viewModel.visibleSectionsByBlock, [first]);
       expect(viewModel.sectionsByBlock, sections);
-      expect(viewModel.sectionFilter.selected, {first.title});
+      expect(viewModel.sectionFilter.selected, first.title);
 
-      // ...and deselecting the last pick empties the selection again,
-      // which brings the prompt back rather than every section.
-      viewModel.toggleSection(first.title);
-      expect(viewModel.sectionFilter.selected, isEmpty);
+      // ...another chip replaces it: one section at a time...
+      final second = sections[1];
+      viewModel.selectSection(second.title);
+      expect(viewModel.visibleSectionsByBlock, [second]);
+      expect(viewModel.sectionFilter.selected, second.title);
+
+      // ...and tapping the pick again empties it, which brings the prompt
+      // back rather than every section.
+      viewModel.selectSection(second.title);
+      expect(viewModel.sectionFilter.selected, isNull);
       expect(viewModel.visibleSectionsByBlock, isEmpty);
     },
     skip: _missing,
   );
 
-  test('a new scan forgets the previous selection', () async {
+  test('a new scan forgets the previous pick', () async {
     final viewModel = _viewModel();
 
     await viewModel.scan(_sample());
     _noFilters(viewModel);
-    viewModel.toggleSection(viewModel.sectionsByBlock.first.title);
+    viewModel.selectSection(viewModel.sectionsByBlock.first.title);
     // Narrowed to just the pick.
     expect(viewModel.visibleSectionsByBlock, hasLength(1));
 
     await viewModel.scan(_sample());
 
-    // The selection is emptied: no pick outlives its scan, so the new
-    // scan starts back at the empty selection — every section still on
-    // hand behind the prompt, ready for a chip.
-    expect(viewModel.sectionFilter.selected, isEmpty);
+    // The pick is dropped: no chip outlives its scan, so the new scan
+    // starts back at the empty row — every section still on hand behind
+    // the prompt, ready for a chip.
+    expect(viewModel.sectionFilter.selected, isNull);
     expect(viewModel.visibleSectionsByBlock, isEmpty);
     expect(viewModel.sectionsByBlock, isNotEmpty);
   }, skip: _missing);
@@ -449,7 +464,7 @@ void main() {
     }
   }, skip: _missing);
 
-  test('the chip selection survives a sort change', () async {
+  test('the chip pick survives a sort change', () async {
     final viewModel = _viewModel();
 
     await viewModel.scan(_sample());
@@ -458,14 +473,14 @@ void main() {
       for (final section in viewModel.sectionsByBlock) section.title,
     ];
 
-    viewModel.toggleSection(titles.first);
+    viewModel.selectSection(titles.first);
     expect(viewModel.visibleSectionsByBlock, hasLength(1));
 
     viewModel.setSort(SortMode.timeThenRoom, SortOrder.descending);
 
     // Both modes keep the same top-level titles, so the pick still points at
     // the same section and the chips need no reshuffling.
-    expect(viewModel.sectionFilter.selected, {titles.first});
+    expect(viewModel.sectionFilter.selected, titles.first);
     expect(
       [for (final section in viewModel.visibleSectionsByBlock) section.title],
       [titles.first],
@@ -508,22 +523,15 @@ void main() {
   });
 
   group('filters', () {
-    /// Picks every section of [viewModel] in the chip row.
-    void selectAll(ScannerViewModel viewModel) {
+    /// Every card the chip row can show, walked one section at a time —
+    /// the row itself only ever holds one pick.
+    List<ScheduleEntry> visibleCards(ScannerViewModel viewModel) {
+      final cards = <ScheduleEntry>[];
       for (final section in viewModel.sectionsByBlock) {
-        viewModel.toggleSection(section.title);
+        viewModel.selectSection(section.title);
+        cards.addAll(_cards(viewModel.visibleSectionsByBlock));
       }
-    }
-
-    /// The sample scanned with every section of it picked — the marks at
-    /// their defaults, unless [unfiltered] walks them all back to `none`
-    /// first (which also rebuilds the sections, so pick after that).
-    Future<ScannerViewModel> allSelected({bool unfiltered = false}) async {
-      final viewModel = _viewModel();
-      await viewModel.scan(_sample());
-      if (unfiltered) _noFilters(viewModel);
-      selectAll(viewModel);
-      return viewModel;
+      return cards;
     }
 
     test('a scan starts from the default choice', () async {
@@ -554,9 +562,8 @@ void main() {
       final viewModel = ScannerViewModel(clock: () => now);
 
       await viewModel.scan(_sample());
-      selectAll(viewModel);
 
-      final cards = _cards(viewModel.visibleSectionsByBlock).toList();
+      final cards = visibleCards(viewModel);
       // The sample books compute labs…
       expect(cards, isNotEmpty);
       // …and that is all that shows: no other room, no free slot, and —
@@ -571,22 +578,21 @@ void main() {
       // The rest of the schedule is behind the choice: every room outside
       // the lab list and every start older than ten minutes never reaches
       // the list.
-      expect(
-        _cardCount(viewModel.visibleSectionsByBlock),
-        lessThan(_cardCount(viewModel.sectionsByBlock)),
-      );
+      expect(cards.length, lessThan(_cardCount(viewModel.sectionsByBlock)));
     }, skip: _missing);
 
     test('the Tipo de espacio choice picks the labs out and back', () async {
-      final viewModel = await allSelected(unfiltered: true);
+      final viewModel = _viewModel();
+      await viewModel.scan(_sample());
+      _noFilters(viewModel);
 
-      final everything = _cards(viewModel.visibleSectionsByBlock).toList();
+      final everything = visibleCards(viewModel);
       expect(everything.any((card) => isComputeLab(card.room)), isTrue);
       expect(everything.any((card) => !isComputeLab(card.room)), isTrue);
 
       viewModel.setRoomType(RoomTypeChoice.labs);
 
-      final labs = _cards(viewModel.visibleSectionsByBlock).toList();
+      final labs = visibleCards(viewModel);
       expect(labs, isNotEmpty);
       expect([
         for (final card in labs) isComputeLab(card.room),
@@ -595,7 +601,7 @@ void main() {
 
       viewModel.setRoomType(RoomTypeChoice.rooms);
 
-      final rest = _cards(viewModel.visibleSectionsByBlock).toList();
+      final rest = visibleCards(viewModel);
       expect(rest, isNotEmpty);
       expect([
         for (final card in rest) isComputeLab(card.room),
@@ -604,10 +610,7 @@ void main() {
 
       viewModel.setRoomType(RoomTypeChoice.all);
 
-      expect(
-        _cards(viewModel.visibleSectionsByBlock),
-        hasLength(everything.length),
-      );
+      expect(visibleCards(viewModel), hasLength(everything.length));
     }, skip: _missing);
 
     test('the Estado choice decides which slots exist as cards', () async {
@@ -641,8 +644,7 @@ void main() {
       cards = _cards(viewModel.sectionsByBlock).toList();
       expect(cards, isNotEmpty);
       expect([for (final card in cards) card.isFree], everyElement(true));
-      selectAll(viewModel);
-      final visible = _cards(viewModel.visibleSectionsByBlock).toList();
+      final visible = visibleCards(viewModel);
       expect(visible, isNotEmpty);
       expect([for (final card in visible) card.isFree], everyElement(true));
 
@@ -653,8 +655,7 @@ void main() {
       expect(cards, isNotEmpty);
       expect([for (final card in cards) card.isFree], everyElement(false));
       expect([
-        for (final card in _cards(viewModel.visibleSectionsByBlock))
-          card.isFree,
+        for (final card in visibleCards(viewModel)) card.isFree,
       ], everyElement(false));
     }, skip: _missing);
 
@@ -666,7 +667,6 @@ void main() {
       // Only the view acts here — every room on the list, the free slots
       // out at their default state.
       viewModel.setRoomType(RoomTypeChoice.all);
-      selectAll(viewModel);
 
       final booked = _cards(viewModel.sectionsByBlock).toList();
       final underway = [
@@ -691,7 +691,7 @@ void main() {
       // room with nothing underway drops out with them.
       viewModel.setView(ViewChoice.now);
 
-      final shown = _cards(viewModel.visibleSectionsByBlock).toList();
+      final shown = visibleCards(viewModel);
       expect(shown.length, underway.length);
       expect([
         for (final card in shown) isOngoing(card.start, card.end, now),
@@ -701,7 +701,7 @@ void main() {
       // minutes — the morning long past is out, the 10:00 card stays.
       viewModel.setView(ViewChoice.soon);
 
-      final soon = _cards(viewModel.visibleSectionsByBlock).toList();
+      final soon = visibleCards(viewModel);
       expect(soon.length, startingSoon.length);
       expect([
         for (final card in soon) isStartingSoon(card.start, now),
@@ -712,14 +712,13 @@ void main() {
       // Todo el día: the view stops filtering at all.
       viewModel.setView(ViewChoice.all);
 
-      expect(
-        _cards(viewModel.visibleSectionsByBlock),
-        hasLength(booked.length),
-      );
+      expect(visibleCards(viewModel), hasLength(booked.length));
     }, skip: _missing);
 
-    test('the Momento choice can empty a selection and say why', () async {
-      final now = DateTime(2026, 1, 1, 10, 5);
+    test('the Momento choice can empty a pick and say why', () async {
+      // After the last session of the day: every booked card is over, so
+      // whichever section is picked empties under `Ahora`.
+      final now = DateTime(2026, 1, 1, 23, 59);
       final viewModel = ScannerViewModel(clock: () => now);
 
       await viewModel.scan(_sample());
@@ -731,25 +730,24 @@ void main() {
       viewModel.setRoomType(RoomTypeChoice.all);
       viewModel.setView(ViewChoice.all);
 
-      // A section whose cards have all been over for a while — the
-      // sample's early morning, asked for rather than assumed.
-      final section = viewModel.sectionsByBlock.firstWhere(
-        (section) =>
-            _cards([section]).isNotEmpty &&
-            _cards([section])
-                .every((card) => !isOngoing(card.start, card.end, now)),
+      final section = viewModel.sectionsByBlock.first;
+      expect(_cards([section]), isNotEmpty);
+      expect(
+        _cards([section])
+            .every((card) => !isOngoing(card.start, card.end, now)),
+        isTrue,
       );
-      viewModel.toggleSection(section.title);
+      viewModel.selectSection(section.title);
       expect(viewModel.visibleSectionsByBlock, isNotEmpty);
 
       viewModel.setView(ViewChoice.now);
 
-      // A block *is* selected, so the view says why there is nothing.
+      // A block *is* picked, so the view says why there is nothing.
       expect(viewModel.visibleSectionsByBlock, isEmpty);
       expect(viewModel.typeFilteredOut, isTrue);
     }, skip: _missing);
 
-    test('the choices narrow inside the chip selection', () async {
+    test('the choices narrow inside the chip pick', () async {
       final viewModel = _viewModel();
       await viewModel.scan(_sample());
       _noFilters(viewModel);
@@ -761,12 +759,12 @@ void main() {
             _cards([section]).every((card) => !isComputeLab(card.room)),
       );
       final titles = [for (final s in viewModel.sectionsByBlock) s.title];
-      viewModel.toggleSection(section.title);
+      viewModel.selectSection(section.title);
       final selected = _cardCount(viewModel.visibleSectionsByBlock);
       expect(selected, greaterThan(0));
 
       // The labs on this section empties it — every card in it lives in
-      // a lab-less room — and says why, since a block *is* selected.
+      // a lab-less room — and says why, since a block *is* picked.
       viewModel.setRoomType(RoomTypeChoice.labs);
 
       expect(viewModel.visibleSectionsByBlock, isEmpty);
@@ -784,7 +782,18 @@ void main() {
     }, skip: _missing);
 
     test('the choices filter inside a time group as well', () async {
-      final viewModel = await allSelected(unfiltered: true);
+      final viewModel = _viewModel();
+      await viewModel.scan(_sample());
+      _noFilters(viewModel);
+
+      // A block holding both kinds of room, so the choice has something to
+      // take away without emptying the pick.
+      final section = viewModel.sectionsByBlock.firstWhere(
+        (section) =>
+            _cards([section]).any((card) => isComputeLab(card.room)) &&
+            _cards([section]).any((card) => !isComputeLab(card.room)),
+      );
+      viewModel.selectSection(section.title);
 
       final before = _cardCount(viewModel.visibleSectionsByBlock);
       viewModel.setRoomType(RoomTypeChoice.labs);
@@ -836,22 +845,24 @@ void main() {
       skip: _missing,
     );
 
-    test('a new scan keeps the choice and clears the selection', () async {
-      final viewModel = await allSelected();
+    test('a new scan keeps the choice and clears the pick', () async {
+      final viewModel = _viewModel();
+      await viewModel.scan(_sample());
       _noFilters(viewModel);
       expect(viewModel.choice, isNot(ScanSettings.defaults));
       expect(viewModel.state, StateChoice.all);
-      expect(viewModel.hasSelection, isTrue);
+      viewModel.selectSection(viewModel.sectionsByBlock.first.title);
+      expect(viewModel.sectionFilter.selected, isNotNull);
 
       await viewModel.scan(_sample());
 
-      // The choice outlives the scan now — only the selection starts
-      // over, so the prompt shows until a chip is chosen.
+      // The choice outlives the scan now — only the pick starts over, so
+      // the prompt shows until a chip is chosen.
       expect(viewModel.choice, isNot(ScanSettings.defaults));
       expect(viewModel.state, StateChoice.all);
       expect(viewModel.typeFilteredOut, isFalse);
       expect(viewModel.visibleSectionsByBlock, isEmpty); // chips went too
-      expect(viewModel.hasSelection, isFalse);
+      expect(viewModel.sectionFilter.selected, isNull);
     }, skip: _missing);
   });
 
@@ -921,28 +932,6 @@ void main() {
       expect(settings.stored!.roomType, RoomTypeChoice.all);
       viewModel.setView(ViewChoice.soon);
       expect(settings.stored!.view, ViewChoice.soon);
-    }, skip: _missing);
-
-    test('clearSelection empties the chips in one go', () async {
-      final viewModel = _viewModel();
-
-      await viewModel.scan(_sample());
-      // The default view is time-bound; walk it to `Todo el día` so every
-      // pick shows its cards here.
-      viewModel.setView(ViewChoice.all);
-      for (final section in viewModel.sectionsByBlock) {
-        viewModel.toggleSection(section.title);
-      }
-      expect(viewModel.hasSelection, isTrue);
-      expect(viewModel.visibleSectionsByBlock, isNotEmpty);
-
-      viewModel.clearSelection();
-
-      // The prompt's way back — deselecting every pick one by one, in one
-      // step — with the sections themselves untouched.
-      expect(viewModel.hasSelection, isFalse);
-      expect(viewModel.visibleSectionsByBlock, isEmpty);
-      expect(viewModel.sectionsByBlock, isNotEmpty);
     }, skip: _missing);
   });
 }

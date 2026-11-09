@@ -14,8 +14,8 @@ import 'package:sched_scan/schedule/models/schedule_word.dart';
 ///
 /// 1. the text layer's fragments are stitched back into whole words (the
 ///    newer PDFs emit text character by character — see [stitchGap]),
-/// 2. page chrome is dropped (title, URL footer, `N de M` counter,
-///    `AULA / HORA` header row, `Buscar...`),
+/// 2. page chrome is dropped (title, browser-printed date stamp / URL
+///    footer, `N de M` counter, `AULA / HORA` header row, `Buscar...`),
 /// 3. the room column ends where the first time anchor starts (read per
 ///    page off the header — x ≈ 79.9pt on the old sample, ≈ 76.2pt on the
 ///    new ones). No word straddles that line, so words on the left are
@@ -88,6 +88,15 @@ class ScheduleParser {
   static final RegExp _pageCounter = RegExp(r'^\d+ de \d+');
   static final RegExp _timeAnchor = RegExp(r'^\d{1,2}:\d{2}$');
 
+  /// Chrome the browser prints on a `print to PDF`: a URL or `about:blank`
+  /// in the footer, and the local date/time (`3/11/26, 10:27`) in the
+  /// header. Unlike the sheet-edge running title, these can sit at x≈24,
+  /// so they need their own rules.
+  static final RegExp _browserUrl = RegExp(r'https?://|about:blank');
+  static final RegExp _browserStamp = RegExp(
+    r'^\d{1,2}/\d{1,2}/\d{2,4},\s*\d{1,2}:\d{2}',
+  );
+
   /// Cell vocabulary.
   static final RegExp _status = RegExp(r'^(LIBRE|RESERVA[A-Z ]*)$');
 
@@ -100,7 +109,7 @@ class ScheduleParser {
   static final RegExp _timeContinuation = RegExp(r'^a\s+(\d{1,2}:\d{2})$');
   static final RegExp _bareTime = RegExp(r'^\d{1,2}:\d{2}$');
   static final RegExp _cycle = RegExp(r'^CICLO:\s*(\d+)$');
-  static final RegExp _bareSection = RegExp(r'^\d+$');
+  static final RegExp _sectionValue = RegExp(r'^(\d+)(?:\s*CICLO:\s*(\d+))?$');
   static final RegExp _note = RegExp(
     r'^(Recuperación.*|Fecha de referencia:.*)$',
   );
@@ -268,6 +277,8 @@ class ScheduleParser {
     // The running title and the `N de M HH:MM` counter are printed against
     // the very edge of the sheet; nothing inside the table starts there.
     if (line.words.map((w) => w.left).reduce(math.min) < 10) return true;
+    if (_browserUrl.hasMatch(text)) return true;
+    if (_browserStamp.hasMatch(text)) return true;
     if (text.startsWith('AULA / HORA')) return true;
     if (text.startsWith('Buscar')) return true;
     if (text.startsWith('DISTRIBUCIÓN DE AMBIENTES')) return true;
@@ -431,9 +442,11 @@ class ScheduleParser {
     }
 
     // The course title runs over several lines and ends with `SEC: n`; the
-    // section itself occasionally wraps onto a line of its own.
+    // section itself occasionally wraps onto a line of its own, sometimes
+    // sharing that line with `CICLO: n`.
     String? course;
     String? section;
+    String? cycle;
     var secAt = -1;
     for (var i = index; i < text.length; i++) {
       if (text[i].contains('SEC:')) {
@@ -450,12 +463,19 @@ class ScheduleParser {
 
       final tail = text[secAt].substring(cut + 4).trim();
       if (tail.isNotEmpty) {
-        section = tail;
+        final value = _sectionValue.firstMatch(tail);
+        section = value?.group(1) ?? tail;
+        cycle = value?.group(2);
         index = secAt + 1;
-      } else if (secAt + 1 < text.length &&
-          _bareSection.hasMatch(text[secAt + 1])) {
-        section = text[secAt + 1];
-        index = secAt + 2;
+      } else if (secAt + 1 < text.length) {
+        final value = _sectionValue.firstMatch(text[secAt + 1]);
+        if (value != null) {
+          section = value.group(1);
+          cycle = value.group(2);
+          index = secAt + 2;
+        } else {
+          index = secAt + 1;
+        }
       } else {
         index = secAt + 1;
       }
@@ -463,7 +483,6 @@ class ScheduleParser {
 
     String? start;
     String? end;
-    String? cycle;
     String? program;
     String? person;
     final notes = <String>[];

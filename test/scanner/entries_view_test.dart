@@ -81,7 +81,7 @@ double _headingTop(WidgetTester tester, String text) => tester
     .dy;
 
 /// EntriesView wired the way `ScannerView` wires it: the visible list is
-/// derived from the selection, and tapping a chip flips it.
+/// derived from the one pick, and tapping a chip moves it.
 class _FilterHost extends StatefulWidget {
   const _FilterHost(this.sections);
 
@@ -92,9 +92,9 @@ class _FilterHost extends StatefulWidget {
 }
 
 class _FilterHostState extends State<_FilterHost> {
-  // Nothing selected at first: like the viewmodel, an empty selection
-  // leaves the card list empty and the prompt takes its place.
-  late final _selected = <String>{};
+  // Nothing picked at first: like the viewmodel, an empty row leaves the
+  // card list empty and the prompt takes its place.
+  String? _selected;
 
   @override
   Widget build(BuildContext context) {
@@ -104,13 +104,13 @@ class _FilterHostState extends State<_FilterHost> {
           hasBookings: true,
           sections: [
             for (final section in widget.sections)
-              if (_selected.contains(section.title)) section,
+              if (_selected == section.title) section,
           ],
           filter: SectionFilter(
             sections: widget.sections,
             selected: _selected,
-            toggle: (title) => setState(() {
-              if (!_selected.remove(title)) _selected.add(title);
+            select: (title) => setState(() {
+              _selected = _selected == title ? null : title;
             }),
           ),
         ),
@@ -215,8 +215,8 @@ void main() {
               showRoom: true,
               filter: SectionFilter(
                 sections: sections,
-                selected: const {'Bloque A'},
-                toggle: (_) {},
+                selected: 'Bloque A',
+                select: (_) {},
               ),
             ),
           ],
@@ -298,9 +298,7 @@ void main() {
     expect(find.textContaining('Sin reservas'), findsNothing);
   });
 
-  testWidgets('says so when the filter marks emptied the selection', (
-    tester,
-  ) async {
+  testWidgets('says so when the filter marks emptied the pick', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: CustomScrollView(
@@ -420,10 +418,10 @@ void main() {
               sections: sections,
               filter: SectionFilter(
                 sections: sections,
-                // Everything picked, so the list above is what shows —
-                // only a pick narrows it.
-                selected: const {'Bloque A', 'Bloque B', 'LOSA DEPORTIVA'},
-                toggle: (_) {},
+                // One pick lights one chip; the list above is what the
+                // sections parameter hands in.
+                selected: 'Bloque A',
+                select: (_) {},
               ),
             ),
           ],
@@ -455,11 +453,12 @@ void main() {
     expect(find.text('Bloque A'), findsOneWidget);
   });
 
-  testWidgets('a chip picks its section, deselecting the last asks for '
-      'another', (tester) async {
+  testWidgets('a chip picks its section, another replaces it and the pick '
+      'itself asks for another', (tester) async {
     await tester.pumpWidget(MaterialApp(home: _FilterHost(_stickySections())));
 
     final chip = find.byKey(const ValueKey('filter-Bloque A'));
+    final chipB = find.byKey(const ValueKey('filter-Bloque B'));
     // Nothing selected to start with: no cards, the prompt stands in for
     // the list, and the chips sit outlined.
     expect(find.text('Selecciona un bloque.'), findsOneWidget);
@@ -480,16 +479,25 @@ void main() {
     expect(find.byType(EntryCard), findsWidgets); // A's cards, lazily built
     expect(tester.widget<Material>(chip).color, isNot(Colors.transparent));
 
-    // ...and deselecting the last pick empties the selection again, which
-    // brings the prompt back rather than every section.
-    await tester.tap(chip);
+    // ...another chip moves the pick instead of adding to it...
+    await tester.tap(chipB);
+    await tester.pump();
+
+    expect(find.text('Bloque B'), findsOneWidget);
+    expect(find.text('Bloque A'), findsNothing);
+    expect(tester.widget<Material>(chipB).color, isNot(Colors.transparent));
+    expect(tester.widget<Material>(chip).color, Colors.transparent);
+
+    // ...and tapping the pick again empties the row, which brings the
+    // prompt back rather than every section.
+    await tester.tap(chipB);
     await tester.pump();
 
     expect(find.text('Selecciona un bloque.'), findsOneWidget);
-    expect(find.text('Bloque A'), findsNothing);
+    expect(find.text('Bloque B'), findsNothing);
     expect(find.byType(EntryCard), findsNothing);
-    expect(chip, findsOneWidget);
-    expect(tester.widget<Material>(chip).color, Colors.transparent);
+    expect(chipB, findsOneWidget);
+    expect(tester.widget<Material>(chipB).color, Colors.transparent);
   });
 
   testWidgets('the filter bar hides scrolling down and floats back in '
@@ -508,10 +516,10 @@ void main() {
               sections: sections,
               filter: SectionFilter(
                 sections: sections,
-                // Everything picked, so the sections above are on screen
-                // to scroll through.
-                selected: const {'Bloque A', 'Bloque B', 'LOSA DEPORTIVA'},
-                toggle: (_) {},
+                // One chip lit; the sections above are what it shows on
+                // screen to scroll through.
+                selected: 'Bloque A',
+                select: (_) {},
               ),
             ),
           ],

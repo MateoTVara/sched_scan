@@ -38,8 +38,9 @@ typedef _Slot = ({
 
 /// The real fixtures in the repo, in order: `sample_01` carries the old
 /// whole-word text layer, `sample_02`… the October 2026 one that emits a
-/// fragment per character (what the stitching step exists for). Each group
-/// skips itself when its PDF is absent.
+/// fragment per character (what the stitching step exists for). The later
+/// ones are browser print-to-PDF copies with their own header/footer chrome.
+/// Each group skips itself when its PDF is absent.
 const _fixtures = <({String path, String name, _Slot? slot})>[
   (path: 'test/fixtures/sample_01.pdf', name: 'sample_01', slot: null),
   (
@@ -82,6 +83,12 @@ const _fixtures = <({String path, String name, _Slot? slot})>[
     ),
   ),
   (path: 'test/fixtures/sample_05.pdf', name: 'sample_05', slot: null),
+  (path: 'test/fixtures/sample_06.pdf', name: 'sample_06', slot: null),
+  (path: 'test/fixtures/sample_07.pdf', name: 'sample_07', slot: null),
+  (path: 'test/fixtures/sample_08.pdf', name: 'sample_08', slot: null),
+  (path: 'test/fixtures/sample_09.pdf', name: 'sample_09', slot: null),
+  (path: 'test/fixtures/sample_10.pdf', name: 'sample_10', slot: null),
+  (path: 'test/fixtures/sample_11.pdf', name: 'sample_11', slot: null),
 ];
 
 ScheduleLine _header(int page) => ScheduleLine(
@@ -407,6 +414,22 @@ void main() {
       expect(entries, hasLength(1));
       expect(entries.single.room, 'AULA A-101');
       expect(entries.single.status, 'LIBRE');
+    });
+
+    test('drops browser-printed chrome away from the sheet edge', () {
+      final entries = ScheduleParser().parse([
+        _header(0),
+        // The browser's own header/footer can sit inside the room column
+        // (x≈24), where the sheet-edge rule does not reach it.
+        _label(0, 5, '3/11/26, 10:27 DISTRIBUCIÓN DE AMBIENTES - 03/11/2026'),
+        _label(0, 760, 'about:blank 1/4'),
+        _label(0, 100, 'AULA A-101'),
+        _cell(0, 100, _col1, 'LIBRE'),
+        _cell(0, 103, _col1, 'De: 07:00 a 11:00'),
+      ]);
+
+      expect(entries, hasLength(1));
+      expect(entries.single.room, 'AULA A-101');
     });
 
     test('glues a room name that a page break cut in half', () {

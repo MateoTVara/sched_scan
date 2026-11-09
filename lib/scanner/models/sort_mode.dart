@@ -7,8 +7,8 @@
 /// inside each group in table order.
 ///
 /// Only ever one direction applies — see [SortOrder] — and the top-level
-/// section titles (`Bloque A`, `LOSA DEPORTIVA`) are the same either way, so
-/// switching modes leaves the filter row's selection alone.
+/// section titles (`Bloque A`, `Bloque POLIDEPORTIVO`) are the same either
+/// way, so switching modes leaves the filter row's pick alone.
 enum SortMode {
   /// Rooms first (table order), then start time inside each room.
   roomThenTime,

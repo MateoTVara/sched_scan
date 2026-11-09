@@ -13,24 +13,24 @@ import 'package:sliver_tools/sliver_tools.dart';
 /// A block section nests two levels — the `Bloque` heading spans every
 /// sub-heading below it (a room, or a start time when [showRoom] is on and
 /// the cards name their own room), and each sticks beneath it while its
-/// cards are current. A room with no block letter gets a single section with
-/// a heading of its own. Cards are already ordered by start time.
+/// cards are current. A room the campus map does not recognise gets a single
+/// section with a heading of its own. Cards are already ordered by start time.
 ///
 /// With a [filter], a floating chip row comes first: one chip per section
-/// (a block's letter, a blockless room's full name) puts that section into
-/// the selection or takes it out. Nothing starts selected — an empty
-/// selection leaves the card list empty — and a selection narrows the list
-/// to its sections; deselecting the last one brings the message back. The
-/// row scrolls away with the content and floats back in over the cards — at
-/// any height — when scrolling up; the pinned headings respect its paint
-/// extent as overlap, so they never cover it.
+/// (a block's letter, a blockless room's full name) picks that section —
+/// one at a time, and tapping the picked chip clears the row. Nothing
+/// starts picked — an empty row leaves the card list empty — and a pick
+/// narrows the list to its section; tapping it again brings the message
+/// back. The row scrolls away with the content and floats back in over the
+/// cards — at any height — when scrolling up; the pinned headings respect
+/// its paint extent as overlap, so they never cover it.
 ///
-/// Free (`LIBRE`) slots reach this view only when the `Libres` row lets
-/// them in — out while it is excluded, its default — so an empty [sections]
-/// list has one of exactly
+/// Free (`LIBRE`) slots reach this view only when `Solo libres` /
+/// `Libres y ocupadas` lets them in — out under `Solo ocupadas`, the
+/// default — so an empty [sections] list has one of exactly
 /// three causes, and the flags name which: nothing is booked anywhere
-/// ([hasBookings] false → `Sin reservas…`), nothing is selected yet
-/// (`Selecciona un bloque.`), or the filter marks emptied the selection
+/// ([hasBookings] false → `Sin reservas…`), nothing is picked yet
+/// (`Selecciona un bloque.`), or the filter marks emptied the pick
 /// ([typeFiltered] → `Ninguna aula coincide con el filtro.`).
 class EntriesView extends StatelessWidget {
   const EntriesView({
@@ -47,7 +47,7 @@ class EntriesView extends StatelessWidget {
 
   /// Whether the *unfiltered* scan had any sections at all. With
   /// `hasBookings == false` nothing is booked anywhere — the free-schedule
-  /// message; otherwise an empty list is a selection problem, and
+  /// message; otherwise an empty list is a pick problem, and
   /// [typeFiltered] tells the two of those apart.
   final bool hasBookings;
 
@@ -154,7 +154,7 @@ class EntriesView extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => filter.toggle(section.title),
+        onTap: () => filter.select(section.title),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Text(

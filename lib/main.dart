@@ -54,18 +54,6 @@ class _MainAppState extends State<MainApp> {
           ),
           backgroundColor: Colors.deepPurple,
           actions: [
-            // The chips belong to the scan on screen, so the way to drop
-            // them all at once only makes sense while some are picked.
-            ListenableBuilder(
-              listenable: _scannerViewModel,
-              builder: (context, _) => _scannerViewModel.hasSelection
-                  ? IconButton(
-                      onPressed: _scannerViewModel.clearSelection,
-                      icon: const Icon(Icons.clear_all, color: Colors.white),
-                      tooltip: 'Limpiar selección',
-                    )
-                  : const SizedBox.shrink(),
-            ),
             // The sort menu only orders what a scan has produced — its
             // choice is persisted now (see `SettingsStore`), so it outlives
             // both the scan and the app, but there is still nothing to

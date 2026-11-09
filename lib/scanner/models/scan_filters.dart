@@ -75,9 +75,9 @@ const Duration recentlyStartedWindow = Duration(minutes: 10);
 
 /// Whether a room is one of the campus's computing labs, matched on the
 /// `<letter>-<digits>` code printed in its name (`B-101 (…)`,
-/// `MÚLTIPLE C-202`): every room of block B, then C-203, C-204, C-303,
-/// C-304 and J-108, J-205, J-206, J-210 … J-215. Nothing else counts —
-/// the descriptor in parentheses is not consulted.
+/// `MÚLTIPLE C-202`): every room of block B, then C-203, C-204 and
+/// J-108, J-205, J-206, J-210 … J-215. Nothing else counts — the
+/// descriptor in parentheses is not consulted.
 bool isComputeLab(String room) {
   final code = RegExp(r'(?:^|\s)([A-Z])-(\d+)').firstMatch(room);
   if (code == null) return false;
@@ -85,7 +85,7 @@ bool isComputeLab(String room) {
   final number = int.parse(code.group(2)!);
   return switch (block) {
     'B' => true,
-    'C' => const {203, 204, 303, 304}.contains(number),
+    'C' => const {203, 204}.contains(number),
     'J' =>
       number == 108 ||
           number == 205 ||
