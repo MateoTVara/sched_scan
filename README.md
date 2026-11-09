@@ -6,20 +6,23 @@ Read a schedule on screen instead of squinting at it: pick a schedule as a
 **PDF**, and its text layer is extracted and *geometrically parsed* into
 structured entries — every booked slot becomes a card.
 
-The cards are grouped by block (`Bloque A` … `Bloque K`), alphabetical and only
-the blocks that occur; rooms with no block letter keep their own section after
-them. Headings are sticky: a block heading holds the top while its section is on
+The cards are grouped by block (`Bloque A` … `Bloque K`, then
+`Bloque POLIDEPORTIVO`), alphabetical and only the blocks that occur; a room the
+campus map does not recognise keeps its own section after them. Headings are
+sticky: a block heading holds the top while its section is on
 screen and is pushed away when it ends, with the room or time heading beneath it
 coming next. Free (`LIBRE`) slots become no card while *Ocupación* keeps bookings
 only — *Solo ocupadas*, its default.
 
 A floating bar of chips narrows the list: it scrolls away going down and floats
-back in at any height going up. Nothing is selected to start with, so the list
-opens on a `Selecciona un bloque.` prompt; picking a block (letter chip) or a
-blockless room (name chip) shows it, and a schedule with nothing booked says
-`Sin reservas: todas las aulas están libres.` instead. A selection that the
-filters empty says `Ninguna aula coincide con el filtro.`. The selection is per
-scan — a new scan starts over with nothing picked.
+back in at any height going up. One chip shows one section at a time — tapping
+another moves the pick, tapping the picked one clears it. Nothing is picked to
+start with, so the list opens on a `Selecciona un bloque.` prompt; picking a
+block (letter or `POLIDEPORTIVO` chip) or an unknown blockless room (name chip)
+shows it, and a schedule with nothing booked says
+`Sin reservas: todas las aulas están libres.` instead.
+A pick the filters empty says `Ninguna aula coincide con el filtro.`. The pick
+is per scan — a new scan starts over with nothing picked.
 
 ## The menu
 
@@ -54,17 +57,17 @@ hora* keeps each block's sub-headings as room names with the times inside them,
 sub-headings become the times (`08:00`, `10:00`, …) and each card names its own
 room. The row in effect carries an arrow (`↑` ascending, `↓` descending):
 tapping it flips the direction, tapping the other one switches criterion with
-the direction as it is. Only the times move: blocks stay `A … K` and rooms keep
-their table order either way.
+the direction as it is. Only the times move: blocks keep their order (`A … K`,
+then `POLIDEPORTIVO`) and rooms keep their table order either way.
 
 Below come three single-choice sections — one choice each, so a combination
 that could empty the list by itself is not on offer:
 
 - **`Tipo de espacio`** — *Todos los espacios* (the default) / *Solo aulas* /
   *Solo laboratorios*. The labs are matched on the `<letter>-<digits>` room code:
-  every room of block B, plus C-203, C-204, C-303, C-304 and J-108, J-205,
-  J-206, J-210 … J-215. The printed descriptor in parentheses is not consulted —
-  the list is the campus's, not the PDF's.
+  every room of block B, plus C-203, C-204 and J-108, J-205, J-206,
+  J-210 … J-215. The printed descriptor in parentheses is not consulted — the
+  list is the campus's, not the PDF's.
 - **`Momento`** — *Todo el día* / *Ahora* / *Inicios próximos* (the default):
   - *Ahora* keeps the sessions running at the clock — started at or before it,
     not yet closed. A slot with no printed end runs from its start on; one with
@@ -85,8 +88,8 @@ chips pick sections, the choices filter what is in them.
 ## Persistence
 
 The sort and the three filter choices are app-level: they survive scans and app
-restarts, and they are stored the moment they change. The chip selection is not
-— it points at the document on screen, so every scan starts with nothing picked.
+restarts, and they are stored the moment they change. The chip pick is not — it
+points at the document on screen, so every scan starts with nothing picked.
 Which preset is in effect is derived from the choice, never stored.
 
 ## Getting started
@@ -172,7 +175,7 @@ flutter test
 ```
 
 Tests mirror `lib/` under `test/`: viewmodel unit tests over
-`test/fixtures/sample_01.pdf` … `sample_05.pdf` (parser round-trip, sorting,
+`test/fixtures/sample_01.pdf` … `sample_11.pdf` (parser round-trip, sorting,
 filtering, persistence), pure model tests for the presets and the filter rules
 (room codes, the `Ahora` and `Inicios próximos` windows), and widget tests for
 the card list, the sticky headings, the chip bar and its three empty states,
