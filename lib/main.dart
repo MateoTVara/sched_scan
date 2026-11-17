@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sched_scan/app_theme.dart';
 import 'package:sched_scan/scanner/scanner_view.dart';
 import 'package:sched_scan/scanner/scanner_viewmodel.dart';
 import 'package:sched_scan/scanner/settings_store.dart';
@@ -46,13 +47,14 @@ class _MainAppState extends State<MainApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      // The phone's setting is the only theme switch: there is no in-app
+      // choice to store, and the app follows a flip live.
+      theme: buildAppTheme(Brightness.light),
+      darkTheme: buildAppTheme(Brightness.dark),
+      themeMode: ThemeMode.system,
       home: Scaffold(
         appBar: AppBar(
-          title: const Text(
-            'Schedule Scanner',
-            style: TextStyle(color: Colors.white),
-          ),
-          backgroundColor: Colors.deepPurple,
+          title: const Text('Schedule Scanner'),
           actions: [
             // The sort menu only orders what a scan has produced — its
             // choice is persisted now (see `SettingsStore`), so it outlives
@@ -64,7 +66,7 @@ class _MainAppState extends State<MainApp> {
                   ? const SizedBox.shrink()
                   : IconButton(
                       onPressed: () => showSortMenu(context, _scannerViewModel),
-                      icon: const Icon(Icons.sort, color: Colors.white),
+                      icon: const Icon(Icons.sort),
                       tooltip: 'Ordenar',
                     ),
             ),

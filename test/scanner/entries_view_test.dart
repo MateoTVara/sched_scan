@@ -154,7 +154,7 @@ void main() {
     expect(find.textContaining('Sin reservas'), findsNothing);
   });
 
-  testWidgets('renders a block heading over a heading per room', (
+  testWidgets('renders a block as its room headings, with no block heading', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -180,7 +180,8 @@ void main() {
       ),
     );
 
-    expect(find.text('Bloque A'), findsOneWidget);
+    // The block itself gets no heading — the picked chip already names it.
+    expect(find.text('Bloque A'), findsNothing);
     expect(find.text('AULA A-101'), findsOneWidget);
     expect(find.text('AULA A-102'), findsOneWidget);
     expect(find.text('LOSA DEPORTIVA'), findsOneWidget);
@@ -224,8 +225,9 @@ void main() {
       ),
     );
 
-    // The block heading, with one sub-heading per start time under it…
-    expect(find.text('Bloque A'), findsOneWidget);
+    // One sub-heading per start time under the bar — and no block heading,
+    // since the chip already names the block…
+    expect(find.text('Bloque A'), findsNothing);
     expect(find.text('08:00'), findsOneWidget);
     expect(find.text('10:00'), findsOneWidget);
     expect(find.byType(EntryCard), findsNWidgets(4));
@@ -331,14 +333,12 @@ void main() {
     );
 
     // With nothing scrolled every heading is in flow, so its box's top is
-    // its content offset — the section regions to scroll through, and each
-    // heading's own height.
+    // its content offset — the section regions to scroll through. A block
+    // has no heading of its own any more, so its first room marks its start.
     double flow(String text) => _headingTop(tester, text);
-    final blockAH = flow('AULA A-101'); // 'Bloque A' starts at 0
-    final roomA1 = flow('AULA A-101');
+    final roomA1 = flow('AULA A-101'); // Bloque A starts at 0
     final roomA2 = flow('AULA A-102');
-    final blockB = flow('Bloque B');
-    final blockBH = flow('B-201') - blockB;
+    final roomB = flow('B-201'); // Bloque B starts here
     final loose = flow('LOSA DEPORTIVA');
 
     /// Where a heading's top lands once scrolled, null when it is no longer
@@ -358,44 +358,36 @@ void main() {
       await tester.pump();
     }
 
-    // Midway through AULA A-101's cards: the block and the current room
-    // stick, the next room waits in the flow below them.
-    await scroll((roomA1 + roomA2) / 2);
-    expect(top('Bloque A'), moreOrLessEquals(0));
-    expect(top('AULA A-101'), moreOrLessEquals(blockAH));
-    expect(top('AULA A-102'), greaterThan(blockAH));
+    // Midway through AULA A-101's cards: the current room sticks, the next
+    // room waits in the flow below it.
+    await scroll(roomA1 + (roomA2 - roomA1) / 2);
+    expect(top('AULA A-101'), moreOrLessEquals(0));
+    expect(top('AULA A-102'), greaterThan(0));
 
-    // Midway through AULA A-102: the block stays, the room heading swaps,
-    // and the finished room's heading leaves with it. Bloque B has not
-    // arrived at the top yet.
-    await scroll((roomA2 + blockB) / 2);
-    expect(top('Bloque A'), moreOrLessEquals(0));
-    expect(top('AULA A-102'), moreOrLessEquals(blockAH));
+    // Midway through AULA A-102: the room heading swaps and the finished
+    // room's heading leaves with it. Bloque B has not arrived at the top yet.
+    await scroll(roomA2 + (roomB - roomA2) / 2);
+    expect(top('AULA A-102'), moreOrLessEquals(0));
     expect(top('AULA A-101'), gone());
-    expect(top('Bloque B'), isNot(moreOrLessEquals(0)));
+    expect(top('B-201'), isNot(moreOrLessEquals(0)));
 
-    // Midway through Bloque B: the whole of block A has left — no pile of
-    // old headings — and only block B's own pair sticks.
-    await scroll((blockB + loose) / 2);
-    expect(top('Bloque B'), moreOrLessEquals(0));
-    expect(top('B-201'), moreOrLessEquals(blockBH));
-    expect(top('Bloque A'), gone());
+    // Midway through Bloque B: block A's last heading has left too — no pile
+    // of old headings — and only B's own room sticks.
+    await scroll(roomB + (loose - roomB) / 2);
+    expect(top('B-201'), moreOrLessEquals(0));
     expect(top('AULA A-102'), gone());
     expect(top('LOSA DEPORTIVA'), isNot(moreOrLessEquals(0)));
 
     // At the very bottom the blockless room sticks alone.
     await scroll(controller.position.maxScrollExtent);
     expect(top('LOSA DEPORTIVA'), moreOrLessEquals(0));
-    expect(top('Bloque B'), gone());
     expect(top('B-201'), gone());
 
-    // Throughout, at most a block and its current room hold the top —
-    // headings never accumulate the way bare pinned slivers would.
+    // Throughout, at most one heading holds the top — headings never
+    // accumulate the way bare pinned slivers would.
     final viewport = tester.getSize(find.byType(CustomScrollView)).height;
     final holding = [
       for (final text in [
-        'Bloque A',
-        'Bloque B',
         'AULA A-101',
         'AULA A-102',
         'B-201',
@@ -403,7 +395,7 @@ void main() {
       ])
         if (top(text) case final y? when y >= 0 && y < viewport) text,
     ];
-    expect(holding.length, lessThanOrEqualTo(2));
+    expect(holding.length, lessThanOrEqualTo(1));
   });
 
   testWidgets('renders one filter chip per section: block letters and room '
@@ -436,8 +428,8 @@ void main() {
     expect(chipB, findsOneWidget);
     expect(chipLosa, findsOneWidget);
 
-    // A block chips its letter, a blockless room its full name; only the
-    // heading spells the block out in full.
+    // A block chips its letter, a blockless room its full name; nothing
+    // spells the block out in full any more — the picked chip names it.
     expect(
       find.descendant(of: chipA, matching: find.text('A')),
       findsOneWidget,
@@ -450,7 +442,7 @@ void main() {
       find.descendant(of: chipLosa, matching: find.text('LOSA DEPORTIVA')),
       findsOneWidget,
     );
-    expect(find.text('Bloque A'), findsOneWidget);
+    expect(find.textContaining('Bloque '), findsNothing);
   });
 
   testWidgets('a chip picks its section, another replaces it and the pick '
@@ -462,7 +454,7 @@ void main() {
     // Nothing selected to start with: no cards, the prompt stands in for
     // the list, and the chips sit outlined.
     expect(find.text('Selecciona un bloque.'), findsOneWidget);
-    expect(find.text('Bloque A'), findsNothing); // no heading yet
+    expect(find.text('AULA A-101'), findsNothing); // no cards yet
     expect(find.byType(EntryCard), findsNothing);
     expect(chip, findsOneWidget);
     expect(tester.widget<Material>(chip).color, Colors.transparent);
@@ -473,9 +465,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('Selecciona un bloque.'), findsNothing);
-    expect(find.text('Bloque A'), findsOneWidget);
     expect(find.text('AULA A-101'), findsOneWidget);
-    expect(find.text('Bloque B'), findsNothing); // heading gone, chip stays
+    expect(find.text('B-201'), findsNothing); // only A's section is listed
     expect(find.byType(EntryCard), findsWidgets); // A's cards, lazily built
     expect(tester.widget<Material>(chip).color, isNot(Colors.transparent));
 
@@ -483,8 +474,8 @@ void main() {
     await tester.tap(chipB);
     await tester.pump();
 
-    expect(find.text('Bloque B'), findsOneWidget);
-    expect(find.text('Bloque A'), findsNothing);
+    expect(find.text('B-201'), findsOneWidget);
+    expect(find.text('AULA A-101'), findsNothing);
     expect(tester.widget<Material>(chipB).color, isNot(Colors.transparent));
     expect(tester.widget<Material>(chip).color, Colors.transparent);
 
@@ -494,7 +485,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Selecciona un bloque.'), findsOneWidget);
-    expect(find.text('Bloque B'), findsNothing);
+    expect(find.text('B-201'), findsNothing);
     expect(find.byType(EntryCard), findsNothing);
     expect(chipB, findsOneWidget);
     expect(tester.widget<Material>(chipB).color, Colors.transparent);
@@ -535,14 +526,14 @@ void main() {
     expect(tester.getTopLeft(bar).dy, moreOrLessEquals(0));
     final barBottom = tester.getBottomLeft(bar).dy;
     expect(barBottom, greaterThan(0));
-    expect(_headingTop(tester, 'Bloque A'), greaterThanOrEqualTo(barBottom));
+    expect(_headingTop(tester, 'AULA A-101'), greaterThanOrEqualTo(barBottom));
 
     // Scrolling down: the bar scrolls away with the content and the pinned
     // heading takes the top for itself.
     controller.jumpTo(300);
     await tester.pump();
     expect(bar.hitTestable(), findsNothing);
-    expect(_headingTop(tester, 'Bloque A'), moreOrLessEquals(0));
+    expect(_headingTop(tester, 'AULA A-101'), moreOrLessEquals(0));
 
     // Scrolling back up at depth: the bar floats back in over the cards
     // without waiting for the top...
@@ -559,7 +550,7 @@ void main() {
     expect(tester.getTopLeft(bar).dy, moreOrLessEquals(0));
     // ...with the pinned heading below it instead of covering it.
     expect(
-      _headingTop(tester, 'Bloque A'),
+      _headingTop(tester, 'AULA A-101'),
       greaterThanOrEqualTo(tester.getBottomLeft(bar).dy),
     );
   });

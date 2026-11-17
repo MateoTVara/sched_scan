@@ -10,11 +10,14 @@ import 'package:sliver_tools/sliver_tools.dart';
 /// its section is on screen and is pushed away when the section ends, so
 /// headings never pile up.
 ///
-/// A block section nests two levels — the `Bloque` heading spans every
-/// sub-heading below it (a room, or a start time when [showRoom] is on and
-/// the cards name their own room), and each sticks beneath it while its
-/// cards are current. A room the campus map does not recognise gets a single
-/// section with a heading of its own. Cards are already ordered by start time.
+/// A block section renders as its sub-headings only — a room, or a start
+/// time when [showRoom] is on and the cards name their own room — each
+/// sticking to the top while its cards are current and pushed away when the
+/// next one arrives. The block itself gets no heading: exactly one section is
+/// on screen (the chips allow one pick), so its title would only repeat the
+/// picked chip. A room the campus map does not recognise gets a single
+/// section with a heading of its own. Cards are already ordered by start
+/// time.
 ///
 /// With a [filter], a floating chip row comes first: one chip per section
 /// (a block's letter, a blockless room's full name) picks that section —
@@ -83,8 +86,8 @@ class EntriesView extends StatelessWidget {
                 !hasBookings
                     ? 'Sin reservas: todas las aulas están libres.'
                     : typeFiltered
-                    ? 'Ninguna aula coincide con el filtro.'
-                    : 'Selecciona un bloque.',
+                        ? 'Ninguna aula coincide con el filtro.'
+                        : 'Selecciona un bloque.',
               ),
             ),
           )
@@ -189,13 +192,13 @@ class EntriesView extends StatelessWidget {
       );
     }
 
-    // A block: its heading spans every group beneath it — a room per group,
-    // or a start time when [showRoom] is on — each grouped in turn so its
-    // heading sticks under the block's while its cards are on screen.
+    // A block: no heading of its own — the picked chip already names it — so
+    // its groups (a room each, or a start time when [showRoom] is on) each
+    // carry the only heading, sticking while their cards are on screen and
+    // pushed away by the next group's.
     return MultiSliver(
       pushPinnedChildren: true,
       children: [
-        _header(context, section.title, level: 0),
         for (final group in section.rooms.entries)
           MultiSliver(
             pushPinnedChildren: true,
@@ -215,11 +218,11 @@ class EntriesView extends StatelessWidget {
             EntryCard(entry: entries[index], showRoom: showRoom),
       );
 
-  /// A pinned heading: level 0 sits loose and large (a block, or a lone room
-  /// with no block letter); the groups a block nests — its rooms, or the
-  /// start times of a time-first sort — sit tighter and smaller underneath.
-  /// The background keeps cards from showing through while the heading is
-  /// stuck to the top.
+  /// A pinned heading: level 0 sits loose and large (a blockless room, whose
+  /// heading is its only label); the groups a block nests — its rooms, or the
+  /// start times of a time-first sort — sit tighter and smaller. The
+  /// background keeps cards from showing through while the heading is stuck
+  /// to the top.
   static Widget _header(
     BuildContext context,
     String text, {
@@ -232,7 +235,7 @@ class EntriesView extends StatelessWidget {
     return SliverPinnedHeader(
       key: ValueKey('heading-$text'),
       child: ColoredBox(
-        color: theme.scaffoldBackgroundColor,
+        color: Theme.of(context).scaffoldBackgroundColor,
         child: Padding(
           padding: EdgeInsets.fromLTRB(16, level == 0 ? 20 : 12, 16, 8),
           child: Text(

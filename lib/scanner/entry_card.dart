@@ -121,22 +121,44 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Badge(label: status, background: _background);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final (background, foreground) = _colors(dark);
+    return _Badge(
+      label: status,
+      background: background,
+      foreground: foreground,
+    );
   }
 
-  Color get _background => switch (status) {
-    'LIBRE' => Colors.green.shade700,
-    'RESERVA ONLINE' => Colors.orange.shade800,
-    'RESERVA LABORATORIO' => Colors.blue.shade700,
-    _ => Colors.blueGrey.shade600,
+  /// One pair per status and brightness: the light theme pairs a dark fill
+  /// with white text, the dark theme a light fill with black. Either pair
+  /// the other way round would leave a small bold label unreadable.
+  (Color, Color) _colors(bool dark) => switch (status) {
+    'LIBRE' =>
+      dark
+          ? (Colors.green.shade400, Colors.black)
+          : (Colors.green.shade800, Colors.white),
+    'RESERVA ONLINE' =>
+      dark
+          ? (Colors.orange.shade400, Colors.black)
+          : (Colors.orange.shade900, Colors.white),
+    'RESERVA LABORATORIO' =>
+      dark
+          ? (Colors.blue.shade300, Colors.black)
+          : (Colors.blue.shade700, Colors.white),
+    _ =>
+      dark
+          ? (Colors.blueGrey.shade300, Colors.black)
+          : (Colors.blueGrey.shade600, Colors.white),
   };
 }
 
 class _Badge extends StatelessWidget {
-  const _Badge({required this.label, this.background});
+  const _Badge({required this.label, this.background, this.foreground});
 
   final String label;
   final Color? background;
+  final Color? foreground;
 
   @override
   Widget build(BuildContext context) {
@@ -155,7 +177,7 @@ class _Badge extends StatelessWidget {
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           color: color == null
               ? Theme.of(context).colorScheme.onSurfaceVariant
-              : Colors.white,
+              : (foreground ?? Colors.white),
           fontWeight: FontWeight.w600,
         ),
       ),
